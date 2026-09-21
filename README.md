@@ -134,6 +134,10 @@ resultado aparece no HUD/painel e no log.
 
 **Informações**: node com um único link (beco sem saída), alvo ainda não carregado etc.
 
+Além disso, depois de gravar o mod **lê o arquivo de volta e compara byte a byte** com o
+que mandou escrever: se o disco entregar outra coisa (gravação truncada, por exemplo), o
+salvamento é reportado como falha — nunca como sucesso.
+
 Muitos erros e avisos têm **correção automática**: o painel mostra o botão de corrigir e
 a aba *Salvar* aplica todas de uma vez (revalidando a cada passada, então nada é corrigido
 com índice velho).
