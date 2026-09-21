@@ -75,6 +75,7 @@ Quando você salva, o mod escreve **três cópias**:
 | **F7** | abre/fecha o painel |
 | **F8** | liga/desliga o desenho dos nodes no mundo |
 | **F9** | valida as áreas carregadas |
+| **F10** | liga/desliga o **diagnóstico do desenho** (marcas de referência + números no log) |
 | **F5** | salva (com validação) |
 | **F6** | recarrega as áreas do disco |
 | **Ctrl+Z / Ctrl+Y** | desfazer / refazer (até 60 passos) |
@@ -141,6 +142,30 @@ salvamento é reportado como falha — nunca como sucesso.
 Muitos erros e avisos têm **correção automática**: o painel mostra o botão de corrigir e
 a aba *Salvar* aplica todas de uma vez (revalidando a cada passada, então nada é corrigido
 com índice velho).
+
+---
+
+## 5.1. Como o desenho no mundo funciona (e o que ajustar)
+
+O mod desenha cada quadro, projetando as coordenadas do mundo para a tela:
+
+* **Tamanho por distância** (`escala_por_distancia`, `tamanho_mundo`): o marcador tem
+  um tamanho *em metros* e encolhe com a distância — é o que faz o desenho parecer
+  parte do mundo em vez de uma camada colada na tela. Desligue para voltar ao
+  tamanho fixo em pixels (`tamanho_node`).
+* **Oclusão** (`oclusao`, `oclusao_raio`, `oclusao_max_por_quadro`): faz um raycast da
+  câmera até o node (`isLineOfSightClear`) e **não desenha o que está atrás de
+  prédio/parede**. O resultado fica em cache por 0,25 s e há um teto de raycasts por
+  quadro para não pesar.
+* **Limites** (`distancia`, `distancia_links`, `max_nodes`, `max_navis`, `max_linhas`,
+  `largura_link`): em área cheia, milhares de nodes viram um emaranhado — estes
+  controles deixam o desenho limpo.
+* **Espaço de coordenadas** (`espaco`): `pixels` é o normal. Se o seu jogo usa a
+  projeção no espaço relativo (640x448) e o desenho em pixels da janela, troque para
+  `jogo`. **Use o F10 para conferir**: as marcas de canto/centro têm que cair
+  exatamente nos cantos/centro da tela.
+* **Diagnóstico** (`geral.log_api`): grava a fase do desenho a cada quadro; o F10
+  grava também os números da projeção (tela, jogador, câmera, pixels por metro).
 
 ---
 
@@ -234,6 +259,9 @@ ambiente, round-trip das áreas carregadas e validação, e escreve o resultado 
 | Nada é desenhado no mundo | O mod só desenha com o jogo jogável (fora da pausa/carregamento). O motivo aparece na aba *Configurações* (`Estado do desenho: …`) e no aviso ao ligar o F8 |
 | Jogo lento com o mod ligado | Aba *Configurações* → **Limites de desenho**: reduza `max_nodes` / `max_linhas` ou deixe o *modo leve automático* ligado (ele corta o desenho quando os quadros passam de ~9 ms) |
 | Travamento/crash e preciso saber onde | Ligue `Diagnostico no log (log_api)`: o log passa a gravar, a cada quadro, a fase do desenho (`links`, `nodes`, `navis`, `hud`, `minimapa`). A última linha antes do travamento diz em qual fase foi |
+| Nodes "colados na tela", não no mapa | Ligue o **F10** (diagnóstico): ele desenha um quadrado vermelho no canto superior esquerdo, uma cruz verde no centro e um quadrado azul no canto inferior direito, além de marcas **no mundo** (amarelo no jogador, magenta 20 m ao norte, ciano 20 m a leste). Me diga onde as marcas caíram e o log mostra os números crus |
+| Desenho atravessa paredes | Aba *Configurações* → **Ocultar nodes atrás de paredes/predios (oclusão)** já vem ligado; aumente `oclusao_raio` para checar mais longe ou reduza `oclusao_max_por_quadro` se o FPS cair |
+| Quadrados/linhas demais na tela | Reduza `distancia` (150 m por padrão), `distancia_links` e `max_nodes`; ligue **Tamanho do node acompanha a distancia** para os marcadores ficarem menores ao longe |
 | Crash ao desenhar | O desenho passa por checagens (`exigir_jogo_pronto`, validade das coordenadas, tetos por quadro) e nunca entrega handle/fonte inválidos à API do MoonLoader — veja *Nota de correção* abaixo |
 
 ### Nota de correção (crash 0xC0000005)
@@ -246,7 +274,7 @@ devolvendo o *método* `M.font` — ou seja, uma **função Lua** era passada pa
 fonte como ponteiro (`ImFont*`), e ler um campo dessa estrutura a partir de um
 ponteiro nulo dá exatamente a leitura em `0x4`.
 
-Corrigido em **1.0.1** (campo renomeado para `fontRef`), com três proteções novas:
+Corrigido em **1.0.2** (campo renomeado para `fontRef`), com três proteções novas:
 
 1. teste de regressão que varre o código e **falha** se qualquer campo do objeto
    tiver o mesmo nome de um método (e o mock agora **recusa** fonte inválida, como
@@ -291,6 +319,12 @@ Good to know:
 * Draw budgets (`max_linhas`, `max_nodes`, `max_navis`) plus an automatic light mode
   keep the frame time in check; set `log_api = true` to log the draw phase of every
   frame (the last line before a freeze tells you where it happened).
+* Nodes are drawn with a **world size** (they shrink with distance) and **occlusion**
+  (a raycast hides what is behind buildings), so they look anchored in the map instead
+  of a flat layer glued to the screen. Press **F10** to draw reference marks
+  (screen corners/centre + world marks around the player) and log the raw projection
+  numbers if something looks off; if the marks do not land where they should, switch
+  `espaco` between `pixels` and `jogo` in the settings tab.
 * **1.0.1 fixes a crash** present in 1.0.0: `self.font` was `nil`, so the lookup fell
   through to the metatable and returned the *method* — a Lua function was handed to
   `renderFontDrawText` instead of the font handle, and the game read a null `ImFont*`

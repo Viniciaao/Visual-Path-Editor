@@ -691,11 +691,13 @@ t.describe('app - interface', function()
 		local label = i18n.t('cfg.cor_veh')
 
 		-- valor invalido: volta para a cor atual e avisa
+		local padrao = A.settings.render.cor_veh
+		t.ok(tostring(padrao):match('^#[0-9A-Fa-f]+$') ~= nil, 'cor padrao e hexadecimal')
 		mock.clearUiLog()
 		mock.runUiFrame()
 		mock.typeText(label, 'azul')
 		mock.runUiFrame()
-		t.eq(A.settings.render.cor_veh, '#FFFFFF', 'cor invalida nao entra')
+		t.eq(A.settings.render.cor_veh, padrao, 'cor invalida nao entra')
 		t.contains(tostring(A.status), 'invalida', 'avisou o jogador')
 
 		-- valor valido: entra na configuracao e no desenho

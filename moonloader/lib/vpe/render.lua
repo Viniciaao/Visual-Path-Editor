@@ -90,6 +90,9 @@ function M.new(project, settings, options)
 		slowFrames = 0,
 		readyReason = nil,
 		phase = 'parado',
+		occlusion = { cache = {}, raycasts = 0, blocked = 0, lastFrame = -1 },
+		diagnostic = false,
+		projection = { calls = 0, fails = 0, space = 'pixels' },
 		stats = { lines = 0, nodes = 0, navis = 0, texts = 0, projects = 0, skipped = 0, ms = 0 },
 		lastError = nil,
 		now = options.now,
@@ -215,6 +218,61 @@ function M:gameState()
 	return nil
 end
 
+--------------------------------------------------------------------------------
+-- Oclusao (nao desenhar atraves de paredes/predios)
+--------------------------------------------------------------------------------
+
+--- Posicao da camera (ou, sem ela, a do jogador + 1 m).
+function M:cameraPos()
+	if type(getActiveCameraCoordinates) == 'function' then
+		local ok, x, y, z = pcall(getActiveCameraCoordinates)
+		if ok and finite(x) and finite(y) and finite(z) then return x, y, z end
+	end
+	local px, py, pz = util.playerCoords()
+	if px then return px, py, (pz or 0) + 1.0 end
+	return nil
+end
+
+--- O ponto esta visivel (sem parede no meio do caminho)?
+--- Usa isLineOfSightClear; se a funcao nao existir, tudo fica visivel.
+function M:isVisible(x, y, z)
+	local conf = self.settings.render or {}
+	if conf.oclusao == false then return true end
+	if not finite(x) or not finite(y) or not finite(z) then return false end
+	if type(isLineOfSightClear) ~= 'function' then return true end
+
+	-- longe demais: pula o raycast (economia)
+	local limit = tonumber(conf.oclusao_raio) or 120.0
+	local cx, cy, cz = self:cameraPos()
+	if cx and limit > 0 then
+		local dx, dy, dz = x - cx, y - cy, z - cz
+		if (dx * dx + dy * dy + dz * dz) > (limit * limit) then return true end
+	end
+
+	local cache = self.occlusion.cache
+	local key = string.format('%.0f:%.0f:%.0f', x, y, z)
+	local hit = cache[key]
+	local now = os.clock()
+	if hit and (now - hit.time) < 0.25 then return hit.visible end
+
+	local maxPerFrame = math.max(0, math.floor(tonumber(conf.oclusao_max_por_quadro) or 40))
+	if self.occlusion.lastFrame ~= self.frameId then
+		self.occlusion.lastFrame = self.frameId
+		self.occlusion.raycasts = 0
+		self.occlusion.blocked = 0
+	end
+	if self.occlusion.raycasts >= maxPerFrame then return true end
+	self.occlusion.raycasts = self.occlusion.raycasts + 1
+
+	if not cx then return true end
+	-- buildings, vehicles=nao, peds=nao, objects=sim, particles=nao
+	local ok, clear = pcall(isLineOfSightClear, cx, cy, cz, x, y, z + 0.5, true, false, false, true, false)
+	if not ok or type(clear) ~= 'boolean' then return true end
+	if not clear then self.occlusion.blocked = self.occlusion.blocked + 1 end
+	cache[key] = { time = now, visible = clear }
+	return clear
+end
+
 --- Teto de cada categoria neste quadro (o modo leve reduz tudo de uma vez).
 function M:budget()
 	local conf = self.settings.render or {}
@@ -247,9 +305,9 @@ end
 --- Resumo do que foi desenhado (usado no HUD, no log e nos testes).
 function M:statsLine()
 	local st = self.stats
-	return string.format('links=%d nodes=%d navis=%d textos=%d proj=%d ms=%.1f facil=%.0f%%',
+	return string.format('links=%d nodes=%d navis=%d textos=%d proj=%d ocultos=%d ms=%.1f facil=%.0f%%',
 		st.lines or 0, st.nodes or 0, st.navis or 0, st.texts or 0, st.projects or 0,
-		st.ms or 0, (self.lightFactor or 1) * 100)
+		st.blocked or 0, st.ms or 0, (self.lightFactor or 1) * 100)
 end
 
 --------------------------------------------------------------------------------
@@ -321,15 +379,138 @@ end
 M.drawLine = drawLine
 M.drawCircle = drawCircle
 
+--------------------------------------------------------------------------------
+-- Diagnostico (tecla F10: ajuda a achar problema de projecao/coordenadas)
+--------------------------------------------------------------------------------
+
+--- Numeros crus da projecao, para o log e para os testes.
+function M:diagnosticReport()
+	local w, h = self:screenSize()
+	local px, py, pz = util.playerCoords()
+	local out = {
+		screen = { w, h },
+		space = self.projection.space or 'pixels',
+		calls = self.projection.calls or 0,
+		fails = self.projection.fails or 0,
+	}
+	if px then
+		out.player = { px, py, pz }
+		local sx, sy = geo.project(px, py, pz)
+		out.playerScreen = { sx, sy }
+		local nx, ny = geo.project(px, py + 20.0, pz)
+		out.northScreen = { nx, ny }
+		local ex, ey = geo.project(px + 20.0, py, pz)
+		out.eastScreen = { ex, ey }
+		out.pixelsPerMeter = self:pixelsPerMeter(px, py, pz)
+	end
+	local cx, cy, cz = self:cameraPos()
+	out.camera = { cx, cy, cz }
+	return out
+end
+
+--- Desenha as marcas de referencia do diagnostico.
+--- 1) marcas de TELA (pelos cantos, segundo getScreenResolution): dizem se a API
+---    de desenho usa a mesma resolucao que a gente pensa.
+--- 2) marcas de MUNDO (jogador, 20 m ao norte, 20 m a leste): dizem se a
+---    projecao acompanha o mapa ou se esta "colada na tela".
+function M:drawDiagnostic()
+	local w, h = self:screenSize()
+	local drawn = 0
+
+	-- marcas de tela
+	if drawBox(10, 10, 20, 20, 0xFFFF0000) then drawn = drawn + 1 end
+	if drawLine(w / 2 - 12, h / 2, w / 2 + 12, h / 2, 2, 0xFF00FF00) then drawn = drawn + 1 end
+	if drawLine(w / 2, h / 2 - 12, w / 2, h / 2 + 12, 2, 0xFF00FF00) then drawn = drawn + 1 end
+	if drawBox(w - 30, h - 30, 20, 20, 0xFF0000FF) then drawn = drawn + 1 end
+
+	-- marcas de mundo
+	local px, py, pz = util.playerCoords()
+	if px then
+		local marca = function(x, y, z, color, size)
+			local sx, sy = self:projectNode({ x = x, y = y, z = z }, 0)
+			if sx then
+				if drawBox(sx - size, sy - size, size * 2, size * 2, color) then drawn = drawn + 1 end
+			end
+		end
+		marca(px, py, pz + 1.0, 0xFFFFFF00, 8)          -- amarelo: no jogador
+		marca(px, py + 20.0, pz + 1.0, 0xFFFF00FF, 6)   -- magenta: 20 m ao norte
+		marca(px + 20.0, py, pz + 1.0, 0xFF00FFFF, 6)   -- ciano: 20 m a leste
+	end
+	return drawn
+end
+
+--- Texto do diagnostico para o log (uma linha, facil de copiar).
+function M:diagnosticLine()
+	local r = self:diagnosticReport()
+	local function pt(t)
+		if not t or not t[1] then return '?' end
+		return string.format('%.1f,%.1f', t[1], t[2] or 0)
+	end
+	local ppm = r.pixelsPerMeter
+	return string.format('tela=%.0fx%.0f espaco=%s jogador=%s camera=%s ppm=%s norte=%s leste=%s falhas=%d/%d',
+		r.screen[1] or 0, r.screen[2] or 0, tostring(r.space),
+		pt(r.playerScreen), pt(r.camera), ppm and string.format('%.2f', ppm) or '?',
+		pt(r.northScreen), pt(r.eastScreen), r.fails or 0, r.calls or 0)
+end
+
+
+--- Converte a coordenada devolvida pela projecao para o espaco que a API de
+--- desenho usa. Em algumas instalacoes a projecao vem no espaco "de jogo"
+--- (relativo, sempre 640x448) e o desenho acontece em pixels da janela.
+function M:toScreenSpace(sx, sy)
+	if (self.settings.render or {}).espaco ~= 'jogo' then return sx, sy end
+	if type(convertGameScreenCoordsToWindowScreenCoords) ~= 'function' then return sx, sy end
+	local ok, wx, wy = pcall(convertGameScreenCoordsToWindowScreenCoords, sx, sy)
+	if ok and finite(wx) and finite(wy) then return wx, wy end
+	return sx, sy
+end
+
 --- Projeta um node e devolve (sx, sy) ou nil (ja validado).
 function M:projectNode(node, height)
 	if not node then return nil end
 	local x, y, z = node.x, node.y, (node.z or 0) + (height or 0)
 	if not validPoint(x, y, z) then return nil end
 	self.stats.projects = self.stats.projects + 1
+	self.projection.calls = self.projection.calls + 1
 	local sx, sy = geo.project(x, y, z)
-	if not validScreen(sx, sy) then return nil end
+	if not validScreen(sx, sy) then
+		self.projection.fails = self.projection.fails + 1
+		return nil
+	end
+	sx, sy = self:toScreenSpace(sx, sy)
+	if not validScreen(sx, sy) then
+		self.projection.fails = self.projection.fails + 1
+		return nil
+	end
 	return sx, sy
+end
+
+--- Quantos pixels valem 1 metro na distancia em que o ponto esta.
+--- Usado para o marcador ter tamanho de "objeto no mundo" (e nao um quadrado
+--- de tamanho fixo que parece colado na tela).
+function M:pixelsPerMeter(x, y, z)
+	if not validPoint(x, y, z) then return nil end
+	local ax, ay = geo.project(x, y, z)
+	if not validScreen(ax, ay) then return nil end
+	local bx, by = geo.project(x, y, z + 1.0)
+	if not validScreen(bx, by) then return nil end
+	local dx, dy = bx - ax, by - ay
+	local scale = math.sqrt(dx * dx + dy * dy)
+	if not finite(scale) or scale <= 0 then return nil end
+	return scale
+end
+
+--- Raio do marcador na tela: tamanho no mundo (metros) x pixels por metro.
+function M:nodeRadius(node, conf)
+	local size = conf.tamanho_node or 6.0
+	if conf.escala_por_distancia == false then return size end
+	local ppm = self:pixelsPerMeter(node.x, node.y, node.z or 0)
+	if not ppm then return size end
+	local radius = (conf.tamanho_mundo or 2.5) * 0.5 * ppm
+	if not finite(radius) then return size end
+	if radius < 1.5 then radius = 1.5 end
+	if radius > 30 then radius = 30 end
+	return radius
 end
 
 --- Desenha os links de todos os nodes carregados.
@@ -341,9 +522,12 @@ function M:drawLinks()
 	local budget = self:budget()
 	local maxLines = budget.lines
 	local maxProjects = math.max(50, math.floor(budget.nodes / 2))
+	local linkDistance = conf.distancia_links or conf.distancia or 150.0
+	local linkWidth = conf.largura_link or 1.0
 	local drawn = 0
 	local seen = {}
 	local projects = 0
+	local blocked = 0
 
 	for _, areaId in ipairs(project:loadedAreas()) do
 		local area = project:area(areaId)
@@ -357,7 +541,12 @@ function M:drawLinks()
 				local distance = geo.distance2d(playerX, playerY, node.x, node.y)
 				if self:shouldDrawNode(areaId, i, node, kind, distance, conf) then
 					projects = projects + 1
-					local x1, y1 = self:projectNode(node, conf.altura_nodes)
+					local x1, y1
+					if self:isVisible(node.x, node.y, node.z or 0) then
+						x1, y1 = self:projectNode(node, conf.altura_nodes)
+					else
+						blocked = blocked + 1
+					end
 					if x1 then
 						for j = 1, #(node.links or {}) do
 							if drawn >= maxLines then
@@ -372,7 +561,13 @@ function M:drawLinks()
 									local targetArea = project:area(link.area)
 									local target = targetArea and targetArea.nodes[link.node + 1]
 									if target then
-										local x2, y2 = self:projectNode(target, conf.altura_nodes)
+										local x2, y2
+										if geo.distance2d(node.x, node.y, target.x, target.y) <= linkDistance
+											and self:isVisible(target.x, target.y, target.z or 0) then
+											x2, y2 = self:projectNode(target, conf.altura_nodes)
+										else
+											blocked = blocked + 1
+										end
 										if x2 then
 											local color = self.colors.link
 											if kind == 'ped' then color = self.colors.linkPed end
@@ -382,7 +577,7 @@ function M:drawLinks()
 											end
 											-- so desenha um lado de cada par
 											if not seen[reverse] then
-												if drawLine(x1, y1, x2, y2, 1.2, color) then
+												if drawLine(x1, y1, x2, y2, linkWidth, color) then
 													drawn = drawn + 1
 												end
 											end
@@ -398,6 +593,7 @@ function M:drawLinks()
 		end
 	end
 	self.stats.lines = drawn
+	self.stats.blocked = (self.stats.blocked or 0) + blocked
 	return drawn
 end
 
@@ -409,6 +605,7 @@ function M:drawNodes()
 	local size = conf.tamanho_node or 6.0
 	local maxNodes = self:budget().nodes
 	local drawn = 0
+	local blocked = 0
 
 	for _, areaId in ipairs(project:loadedAreas()) do
 		local area = project:area(areaId)
@@ -421,12 +618,17 @@ function M:drawNodes()
 				local kind = dat.nodeType(area, i)
 				local distance = geo.distance2d(playerX, playerY, node.x, node.y)
 				if self:shouldDrawNode(areaId, i, node, kind, distance, conf) then
-					local sx, sy = self:projectNode(node, conf.altura_nodes)
+					local sx, sy
+					if self:isVisible(node.x, node.y, node.z or 0) then
+						sx, sy = self:projectNode(node, conf.altura_nodes)
+					else
+						blocked = blocked + 1
+					end
 					if sx then
 						local color = self:nodeColor(areaId, i, node, kind)
-						local radius = size
+						local radius = self:nodeRadius(node, conf)
 						local selected = project.selection.area == areaId and project.selection.node == i
-						if selected then radius = size * 1.6 end
+						if selected then radius = radius * 1.6 end
 						local sides = (kind == 'ped') and 3 or 4
 						if drawCircle(sx, sy, radius, color, sides, conf.usar_poligonos) then
 							drawn = drawn + 1
@@ -438,6 +640,7 @@ function M:drawNodes()
 		end
 	end
 	self.stats.nodes = drawn
+	self.stats.blocked = (self.stats.blocked or 0) + blocked
 	return drawn
 end
 
@@ -450,6 +653,7 @@ function M:drawNavis()
 	local size = (conf.tamanho_node or 6.0) * 0.8
 	local maxNavis = self:budget().navis
 	local drawn = 0
+	local blocked = 0
 
 	for _, areaId in ipairs(project:loadedAreas()) do
 		local area = project:area(areaId)
@@ -461,12 +665,18 @@ function M:drawNavis()
 				local navi = area.navis[i]
 				local distance = geo.distance2d(playerX, playerY, navi.x, navi.y)
 				if distance <= (conf.distancia or 250.0) then
-					local sx, sy = self:projectNode(navi, (conf.altura_nodes or 1.0) + 0.5)
+					local sx, sy
+					if self:isVisible(navi.x, navi.y, navi.z or 0) then
+						sx, sy = self:projectNode(navi, (conf.altura_nodes or 1.0) + 0.5)
+					else
+						blocked = blocked + 1
+					end
 					if sx then
 						local color = self.colors.navi
+						local naviRadius = self:nodeRadius(navi, conf) * 0.8
 						local sel = project.selection.area == areaId and project.selection.navi == i
 						if sel then color = self.colors.selected end
-						if drawCircle(sx, sy, size, color, nil, conf.usar_poligonos) then
+						if drawCircle(sx, sy, naviRadius, color, nil, conf.usar_poligonos) then
 							drawn = drawn + 1
 						end
 						-- direcao
@@ -486,16 +696,24 @@ function M:drawNavis()
 		end
 	end
 	self.stats.navis = drawn
+	self.stats.blocked = (self.stats.blocked or 0) + blocked
 	return drawn
 end
 
 --- Atualiza a posicao do jogador (uma vez por quadro, evita varias chamadas).
 function M:update(dt)
+	self.frameId = (self.frameId or 0) + 1
 	self.stats = {
 		lines = 0, nodes = 0, navis = 0, texts = 0,
 		projects = (self.stats and self.stats.projects or 0),
-		skipped = 0, ms = (self.stats and self.stats.ms or 0),
+		skipped = 0, blocked = 0, ms = (self.stats and self.stats.ms or 0),
 	}
+	-- cache de oclusao: descarta o que nao foi usado no ultimo segundo
+	local now = os.clock()
+	local cache = self.occlusion.cache
+	for key, entry in pairs(cache) do
+		if (now - entry.time) > 1.0 then cache[key] = nil end
+	end
 end
 
 --- Desenha tudo (links, nodes, navi e HUD).
@@ -528,6 +746,10 @@ function M:draw()
 	if (self.settings.map or {}).ativo == true then
 		self.phase = 'minimapa'
 		self:drawMinimap()
+	end
+	if self.diagnostic then
+		self.phase = 'diagnostico'
+		self:drawDiagnostic()
 	end
 	self.phase = 'fim'
 	self:measure(os.clock() - started)

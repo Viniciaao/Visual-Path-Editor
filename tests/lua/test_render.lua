@@ -258,6 +258,149 @@ t.describe('render - projecao e culling', function()
 		t.contains(line, 'ms=')
 	end)
 
+	t.test('tamanho do node acompanha a distancia (parece estar no mundo)', function()
+		mock.reset()
+		mock.pixelsPerMeterZ = 2.0 -- projecao "com perspectiva": 2 px por metro
+		local p, r = fixture({ render = { ativo = true, distancia = 250, escala_por_distancia = true, tamanho_mundo = 4.0 } })
+		r:update()
+		t.eq(r:drawNodes(), 3)
+		local box = callsOf('box')[1]
+		t.near(box[4], 8.0, 0.001, 'tamanho no mundo (4 m) x pixels por metro')
+		t.near(box[5], 8.0, 0.001)
+
+		-- longe (menos pixels por metro) = marcador menor
+		mock.reset()
+		mock.pixelsPerMeterZ = 0.5
+		local p2, r2 = fixture({ render = { ativo = true, distancia = 250, escala_por_distancia = true, tamanho_mundo = 8.0 } })
+		r2:update()
+		r2:drawNodes()
+		t.near(callsOf('box')[1][4], 4.0, 0.001, 'longe fica menor')
+
+		-- desligado: volta ao tamanho fixo em pixels
+		mock.reset()
+		mock.pixelsPerMeterZ = 2.0
+		local p3, r3 = fixture({ render = { ativo = true, distancia = 250, escala_por_distancia = false, tamanho_node = 6 } })
+		r3:update()
+		r3:drawNodes()
+		t.near(callsOf('box')[1][4], 12.0, 0.001, 'tamanho fixo em pixels')
+
+		-- limite: marcador gigante e cortado
+		mock.reset()
+		mock.pixelsPerMeterZ = 60.0
+		local p4, r4 = fixture({ render = { ativo = true, distancia = 250, escala_por_distancia = true, tamanho_mundo = 20 } })
+		r4:update()
+		r4:drawNodes()
+		t.near(callsOf('box')[1][4], 60.0, 0.001, 'raio maximo 30 px')
+		mock.reset()
+	end)
+
+	t.test('oclusao nao desenha node atras de parede', function()
+		mock.reset()
+		local p, r = fixture()
+		-- so o node 2 (x = 2500) esta bloqueado
+		mock.lineOfSightClear = function(x1, y1, z1, x2, y2, z2)
+			return math.abs(x2 - 2500) > 0.5
+		end
+		r:update()
+		t.eq(r:drawNodes(), 2, 'o node bloqueado ficou de fora')
+		t.ok(r.stats.blocked >= 1, 'contou os ocultos')
+		local texts = {}
+		for _, call in ipairs(callsOf('box')) do texts[#texts + 1] = call[2] end
+		t.eq(#texts, 2)
+
+		-- desligado: desenha tudo
+		mock.reset()
+		local p2, r2 = fixture({ render = { ativo = true, distancia = 250, oclusao = false } })
+		r2:update()
+		t.eq(r2:drawNodes(), 3)
+		t.eq(mock.lineOfSightCalls or 0, 0, 'sem raycast quando desligado')
+		mock.reset()
+	end)
+
+	t.test('oclusao respeita o teto de raycasts por quadro e usa cache', function()
+		mock.reset()
+		local p = model.new()
+		local area = dat.newArea(19)
+		area.isNew = false
+		for i = 1, 100 do
+			area.nodes[i] = makeNode(2495 + i * 0.5, -1684, 10)
+		end
+		area.vehCount = 100
+		p:loadArea(19, area)
+		local r = render.new(p, { render = { ativo = true, distancia = 250, max_nodes = 100, oclusao = true, oclusao_max_por_quadro = 10, oclusao_raio = 500 } })
+		r:update()
+		r:drawNodes()
+		t.eq(mock.lineOfSightCalls, 10, 'no maximo 10 raycasts no quadro')
+
+		-- mesmo quadro de novo: o cache (0,25 s) evita repetir... mas o teto do
+		-- quadro tambem reinicia, entao conferimos que nao passa de 10 por quadro
+		local antes = mock.lineOfSightCalls
+		r:update()
+		r:drawNodes()
+		t.ok(mock.lineOfSightCalls - antes <= 10, 'teto por quadro mantido')
+		mock.reset()
+	end)
+
+	t.test('oclusao ignora node longe do alcance', function()
+		mock.reset()
+		local p = model.new()
+		local area = dat.newArea(21)
+		area.isNew = false
+		area.nodes[1] = makeNode(2900, -1684, 10) -- ~405 m do jogador
+		area.vehCount = 1
+		p:loadArea(21, area)
+		local r = render.new(p, { render = { ativo = true, distancia = 1000, oclusao = true, oclusao_raio = 100, oclusao_max_por_quadro = 40 } })
+		r:update()
+		t.eq(r:drawNodes(), 1)
+		t.eq(mock.lineOfSightCalls or 0, 0, 'fora do alcance nao faz raycast')
+		mock.reset()
+	end)
+
+	t.test('espaco de coordenadas de jogo converte para pixels', function()
+		mock.reset()
+		mock.gameSpaceScale = 2.0 -- projecao em 640x448, janela em pixels
+		local p, r = fixture({ render = { ativo = true, distancia = 250, espaco = 'jogo' } })
+		r:update()
+		r:drawNodes()
+		local box = callsOf('box')[1]
+		-- node 1 esta exatamente no jogador: projecao 960,540 -> 1920,1080
+		t.near(box[2] + box[4] / 2, 1920.0, 1.0, 'x convertido')
+		t.near(box[3] + box[5] / 2, 1080.0, 1.0, 'y convertido')
+
+		mock.reset()
+		mock.gameSpaceScale = 1.0
+		local p2, r2 = fixture({ render = { ativo = true, distancia = 250, espaco = 'pixels' } })
+		r2:update()
+		r2:drawNodes()
+		t.near(callsOf('box')[1][2] + callsOf('box')[1][4] / 2, 960.0, 1.0, 'sem conversao')
+		mock.reset()
+	end)
+
+	t.test('diagnostico desenha as marcas de referencia', function()
+		mock.reset()
+		local p, r = fixture()
+		r.diagnostic = true
+		t.ok(r:draw())
+		local boxes = callsOf('box')
+		t.ok(#boxes >= 5, 'cantos + 3 marcas de mundo')
+		local lines = callsOf('line')
+		t.ok(#lines >= 2, 'cruz do centro')
+
+		local canto
+		for _, box in ipairs(boxes) do
+			if box[2] == 10 and box[3] == 10 then canto = box end
+		end
+		t.ok(canto ~= nil, 'desenhou a marca do canto superior esquerdo')
+		t.near(canto[4], 20.0, 0.001, 'tamanho da marca do canto')
+		t.eq(r.diagnostic, true, 'diagnostico segue ligado')
+
+		local text = r:diagnosticLine()
+		t.contains(text, 'tela=1920x1080')
+		t.contains(text, 'jogador=')
+		t.contains(text, 'leste=')
+		t.ok(type(r:diagnosticReport().playerScreen) == 'table')
+	end)
+
 	t.test('renderizacao desligada nao desenha nada', function()
 		mock.reset()
 		local p, r = fixture({ render = { ativo = false } })

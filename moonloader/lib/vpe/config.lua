@@ -27,11 +27,24 @@ M.defaults = {
 		exigir_jogo_pronto = true,
 		-- teto de primitivas por quadro (protege o jogo e o FPS)
 		max_linhas = 900,
-		max_nodes = 600,
-		max_navis = 300,
+		max_nodes = 400,
+		max_navis = 200,
 		usar_poligonos = false,
 		modo_leve = true,
-		distancia = 250.0,
+		distancia = 150.0,
+		-- links (linhas) so entre nodes perto (area cheia virava emaranhado)
+		distancia_links = 150.0,
+		largura_link = 1.0,
+		-- oclusao: nao desenhar node atras de predio/parede (raycast)
+		oclusao = true,
+		oclusao_raio = 120.0,
+		oclusao_max_por_quadro = 40,
+		-- tamanho do marcador acompanha a distancia (perspectiva de verdade)
+		escala_por_distancia = true,
+		tamanho_mundo = 2.5,
+		-- espaco de coordenadas da api de desenho: 'pixels' ou 'jogo'
+		-- ('jogo' = converte com convertGameScreenCoordsToWindowScreenCoords)
+		espaco = 'pixels',
 		mostrar_nodes = true,
 		mostrar_links = true,
 		mostrar_navis = true,
@@ -40,13 +53,13 @@ M.defaults = {
 		mostrar_hud = true,
 		altura_nodes = 1.0,
 		tamanho_node = 6.0,
-		cor_veh = '#FFFFFF',
-		cor_ped = '#26E04D',
-		cor_boat = '#3DA5FF',
-		cor_navi = '#1BE4E4',
-		cor_selecionado = '#FFD200',
-		cor_link = '#8C8C8C',
-		cor_hover = '#FF5A5A',
+		cor_veh = '#E0FFFFFF',
+		cor_ped = '#E026E04D',
+		cor_boat = '#E03DA5FF',
+		cor_navi = '#E01BE4E4',
+		cor_selecionado = '#FFFFD200',
+		cor_link = '#708C8C8C',
+		cor_hover = '#FFFF5A5A',
 	},
 	edicao = {
 		espelhar_links = true,
@@ -92,6 +105,7 @@ M.defaults = {
 		proximo_node = 'TAB',
 		criar_link = 'ENTER',
 		marcar_origem = 'CTRL_L',
+		diagnostico = 'F10',
 	},
 }
 

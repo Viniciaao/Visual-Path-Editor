@@ -99,10 +99,12 @@ function M.install()
 	_G.renderGetFontDrawHeight = function(font) checkFont(font) return 12 end
 	_G.getScreenResolution = function() return M.screen.width, M.screen.height end
 
-	-- 3D -> 2D (projecao simples e deterministica, so para os testes)
+	-- 3D -> 2D (projecao simples e deterministica, so para os testes).
+	-- 'pixelsPerMeterZ' e 0 por padrao (projecao "ortografica" no plano XY);
+	-- os testes que querem medir tamanho por distancia ligam esse termo.
 	_G.convert3DCoordsToScreen = function(x, y, z)
 		local sx = M.screen.width / 2 + (x - M.playerPos.x) * 2
-		local sy = M.screen.height / 2 - (y - M.playerPos.y) * 2
+		local sy = M.screen.height / 2 - (y - M.playerPos.y) * 2 - ((z or M.playerPos.z) - M.playerPos.z) * (M.pixelsPerMeterZ or 0)
 		return sx, sy
 	end
 	_G.convertScreenCoordsToWorld3D = function(sx, sy, depth)
@@ -112,6 +114,30 @@ function M.install()
 		return x, y, z
 	end
 	_G.isPointOnScreen = function(x, y, z, radius) return true end
+
+	-- camera e oclusao (usados para nao desenhar atraves de paredes)
+	_G.getActiveCameraCoordinates = function()
+		M.cameraCalls = (M.cameraCalls or 0) + 1
+		local c = M.cameraPos or { M.playerPos.x, M.playerPos.y, M.playerPos.z + 1.0 }
+		return c[1], c[2], c[3]
+	end
+	_G.getActiveCameraPointAt = function() return M.playerPos.x + 10.0, M.playerPos.y, M.playerPos.z end
+	_G.isLineOfSightClear = function(x1, y1, z1, x2, y2, z2, buildings, vehicles, peds, objects, particles)
+		M.lineOfSightCalls = (M.lineOfSightCalls or 0) + 1
+		M.lastLineOfSight = { x1, y1, z1, x2, y2, z2, buildings, vehicles, peds, objects, particles }
+		if M.lineOfSightClear then return M.lineOfSightClear(x1, y1, z1, x2, y2, z2) end
+		return true
+	end
+
+	-- espaco de coordenadas "de jogo" (640x448) <-> pixels da janela
+	_G.convertGameScreenCoordsToWindowScreenCoords = function(x, y)
+		local k = M.gameSpaceScale or 1.0
+		return x * k, y * k
+	end
+	_G.convertWindowScreenCoordsToGameScreenCoords = function(x, y)
+		local k = M.gameSpaceScale or 1.0
+		return x / k, y / k
+	end
 
 	-- jogador (o MoonLoader expoe estes globais)
 	M.refreshPlayer()
@@ -147,8 +173,6 @@ function M.install()
 	_G.wasKeyPressed = function(key) return M.keyJustPressed[key] == true end
 	_G.isKeyJustPressed = _G.wasKeyPressed
 	_G.getCursorPos = function() return M.cursorX or 0, M.cursorY or 0 end
-	_G.convertWindowScreenCoordsToGameScreenCoords = function(x, y) return x, y end
-	_G.convertGameScreenCoordsToWindowScreenCoords = function(x, y) return x, y end
 
 	-- eventos
 	M.eventHandlers = {}
@@ -466,6 +490,12 @@ function M.reset()
 	M.playerPlaying = true
 	M.gamePaused = false
 	M.badHandleCalls = 0
+	M.pixelsPerMeterZ = 0
+	M.cameraPos = nil
+	M.lineOfSightClear = nil
+	M.lineOfSightCalls = 0
+	M.cameraCalls = 0
+	M.gameSpaceScale = 1.0
 	M.refreshPlayer()
 end
 

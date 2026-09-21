@@ -28,7 +28,7 @@ local M = {}
 
 local T = i18n.t
 
-M.VERSION = '1.0.1'
+M.VERSION = '1.0.2'
 M.AREA_COUNT = 64
 
 M.VK_CONTROL = 0x11
@@ -1262,6 +1262,35 @@ function M:toggleRender()
 	return conf.ativo
 end
 
+--- Liga/desliga as marcas de diagnostico do desenho (F10) e grava os numeros
+--- crus da projecao no log: e assim que se descobre problema de coordenadas.
+function M:toggleDiagnostic()
+	if not self.render then return false end
+	self.render.diagnostic = not self.render.diagnostic
+	local on = self.render.diagnostic
+	if self.log then
+		if on then
+			log.info('diagnostico do desenho LIGADO: %s', self.render:diagnosticLine())
+			log.info('  esperado: quadrado VERMELHO no canto superior esquerdo, cruz VERDE no centro, quadrado AZUL no canto inferior direito')
+			log.info('  no mundo: AMARELO no jogador, MAGENTA 20 m ao norte (Y+), CIANO 20 m a leste (X+)')
+		else
+			log.info('diagnostico do desenho desligado')
+		end
+	end
+	self:setStatus(T(on and 'ui.diag_ligado' or 'ui.diag_desligado'), 'info')
+	return on
+end
+
+--- Registra o diagnostico no log (chamado a cada segundo enquanto ligado).
+function M:diagnosticTick()
+	if not self.render or not self.render.diagnostic then return false end
+	local t = self:now()
+	if t - (self.diagTimer or 0) < 1.0 then return false end
+	self.diagTimer = t
+	if self.log then log.info('diag: %s', self.render:diagnosticLine()) end
+	return true
+end
+
 --- Aviso curto quando o desenho esta ligado mas o jogo nao deixa desenhar.
 function M:warnRenderState()
 	local render = self.render
@@ -1390,6 +1419,7 @@ function M:updateKeys()
 	if self:pressed('node_no_jogador') then self:atPlayer() end
 	if self:pressed('node_na_mira') then self:atCrosshair() end
 	if self:pressed('snap_solo') then self:snapGround() end
+	if self:pressed('diagnostico') then self:toggleDiagnostic() end
 	if self:pressed('proximo_node') then
 		local ok, entry = self:cycleNode(1)
 		if ok and entry then
@@ -1445,6 +1475,7 @@ function M:update(dt)
 	self:updateMouse()
 	self:updateNudge(dt)
 	self:autoValidateTick()
+	self:diagnosticTick()
 end
 
 function M:drawWorld()

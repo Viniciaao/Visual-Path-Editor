@@ -1327,10 +1327,38 @@ function M:draw_config_tab()
 				settings.render.modo_leve = v
 				if v and app.render then app.render.lightFactor = 1.0 end
 			end)
-		local mnChanged, maxNodes = self:labeledSlider(T('cfg.max_nodes'), 'int', 'cfg_maxnodes', settings.render.max_nodes or 600, 20, 4000, 10)
+		local mnChanged, maxNodes = self:labeledSlider(T('cfg.max_nodes'), 'int', 'cfg_maxnodes', settings.render.max_nodes or 400, 20, 4000, 10)
 		if mnChanged then settings.render.max_nodes = maxNodes end
-		local nvChanged, maxNavis = self:labeledSlider(T('cfg.max_navis'), 'int', 'cfg_maxnavis', settings.render.max_navis or 300, 10, 2000, 10)
+		local nvChanged, maxNavis = self:labeledSlider(T('cfg.max_navis'), 'int', 'cfg_maxnavis', settings.render.max_navis or 200, 10, 2000, 10)
 		if nvChanged then settings.render.max_navis = maxNavis end
+		-- parecer "no mundo" em vez de um desenho colado na tela
+		self:checkboxBinding(T('cfg.escala_distancia'), 'bool', 'cfg_escdist', settings.render.escala_por_distancia ~= false,
+			function(v) settings.render.escala_por_distancia = v end)
+		local tmChanged, tamanhoMundo = self:labeledSlider(T('cfg.tamanho_mundo'), 'float', 'cfg_tammundo', settings.render.tamanho_mundo or 2.5, 0.5, 20, 0.5)
+		if tmChanged then settings.render.tamanho_mundo = tamanhoMundo end
+		local dlChanged, distLinks = self:labeledSlider(T('cfg.distancia_links'), 'float', 'cfg_distlinks', settings.render.distancia_links or 150, 10, 1000, 10)
+		if dlChanged then settings.render.distancia_links = distLinks end
+		local lwChanged, larguraLink = self:labeledSlider(T('cfg.largura_link'), 'float', 'cfg_larglink', settings.render.largura_link or 1.0, 0.5, 6, 0.5)
+		if lwChanged then settings.render.largura_link = larguraLink end
+		self:checkboxBinding(T('cfg.oclusao'), 'bool', 'cfg_oclusao', settings.render.oclusao ~= false,
+			function(v) settings.render.oclusao = v end)
+		local orChanged, raioOclusao = self:labeledSlider(T('cfg.oclusao_raio'), 'float', 'cfg_oclurad', settings.render.oclusao_raio or 120, 0, 500, 10)
+		if orChanged then settings.render.oclusao_raio = raioOclusao end
+		local omChanged, maxOclusao = self:labeledSlider(T('cfg.oclusao_max'), 'int', 'cfg_oclumax', settings.render.oclusao_max_por_quadro or 40, 0, 300, 5)
+		if omChanged then settings.render.oclusao_max_por_quadro = maxOclusao end
+		-- espaco de coordenadas: se as marcas nao cairem nos cantos certos, troque aqui
+		local espacos = { 'pixels', 'jogo' }
+		local espacoAtual = (settings.render.espaco == 'jogo') and 2 or 1
+		local espRef = self:syncRef('int', 'cfg_espaco', espacoAtual)
+		local espChanged, espIndex = self:combo(T('cfg.espaco'), espRef, espacos)
+		if espChanged then
+			settings.render.espaco = (espIndex == 2) and 'jogo' or 'pixels'
+			if app.render then app.render.projection.space = settings.render.espaco end
+			app:setStatus(T('cfg.config_salva'), 'info')
+		end
+		self:textDim(T('cfg.espaco_dica'))
+		self:textDim(T('cfg.diagnostico_dica'))
+		if self:button(T('cfg.diagnostico')) then app:toggleDiagnostic() end
 		self:textDim(T('cfg.cores'))
 		-- cor editavel: campo de texto "#RRGGBB" (o valor so entra se for valido)
 		local function colorBinding(label, key, field)
