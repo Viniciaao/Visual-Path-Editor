@@ -231,6 +231,31 @@ ambiente, round-trip das áreas carregadas e validação, e escreve o resultado 
 | Salvamento bloqueado | Veja os erros na aba *Salvar*: corrija os marcados ou use "corrigir automaticamente" |
 | Arquivo salvo com avisos | O mod pergunta antes; confirme apenas se tiver certeza do que está fazendo |
 | Quero voltar atrás | Aba *Salvar* → **reverter** (tira o override do modloader) e **restaurar backup** |
+| Nada é desenhado no mundo | O mod só desenha com o jogo jogável (fora da pausa/carregamento). O motivo aparece na aba *Configurações* (`Estado do desenho: …`) e no aviso ao ligar o F8 |
+| Jogo lento com o mod ligado | Aba *Configurações* → **Limites de desenho**: reduza `max_nodes` / `max_linhas` ou deixe o *modo leve automático* ligado (ele corta o desenho quando os quadros passam de ~9 ms) |
+| Travamento/crash e preciso saber onde | Ligue `Diagnostico no log (log_api)`: o log passa a gravar, a cada quadro, a fase do desenho (`links`, `nodes`, `navis`, `hud`, `minimapa`). A última linha antes do travamento diz em qual fase foi |
+| Crash ao desenhar | O desenho passa por checagens (`exigir_jogo_pronto`, validade das coordenadas, tetos por quadro) e nunca entrega handle/fonte inválidos à API do MoonLoader — veja *Nota de correção* abaixo |
+
+### Nota de correção (crash 0xC0000005)
+
+Até a versão **1.0.0** o HUD podia derrubar o GTA (`MoonLoader.asi`, violação de
+acesso lendo o endereço `0x00000004`). Causa: o campo `self.font` era inicializado
+como `nil`; em Lua isso **apaga a chave** e a leitura passa a cair na metatable,
+devolvendo o *método* `M.font` — ou seja, uma **função Lua** era passada para
+`renderFontDrawText`/`renderGetFontDrawTextLength` no lugar da fonte. O jogo lê a
+fonte como ponteiro (`ImFont*`), e ler um campo dessa estrutura a partir de um
+ponteiro nulo dá exatamente a leitura em `0x4`.
+
+Corrigido em **1.0.1** (campo renomeado para `fontRef`), com três proteções novas:
+
+1. teste de regressão que varre o código e **falha** se qualquer campo do objeto
+   tiver o mesmo nome de um método (e o mock agora **recusa** fonte inválida, como
+   o jogo faria);
+2. nenhuma API nativa recebe handle inválido: `PLAYER_PED or 0` foi eliminado
+   (usa `util.playerPed()`, que nunca devolve `0`/negativo/ped inexistente);
+3. o desenho só acontece com o jogo jogável, com coordenadas validadas (sem
+   `NaN`/infinito), teto de primitivas por quadro, `pcall` em toda chamada nativa e
+   modo leve automático.
 
 ---
 
@@ -257,6 +282,20 @@ its broken `nodes*.dat` writing and its usability problems.
 Install: copy the `moonloader/` folder into your GTA San Andreas directory. Requires
 MoonLoader 0.26.x (target 0.26.5 beta), Moon ImGui 1.1.5 and ModLoader. Press **F7**
 in game to open the panel. Run `python3 tests/run.py` to execute the offline test suite.
+
+Good to know:
+
+* The mod only draws while the game is actually playable (not paused/loading). When it
+  is holding back, the reason is shown in the settings tab and as a warning when you
+  press F8.
+* Draw budgets (`max_linhas`, `max_nodes`, `max_navis`) plus an automatic light mode
+  keep the frame time in check; set `log_api = true` to log the draw phase of every
+  frame (the last line before a freeze tells you where it happened).
+* **1.0.1 fixes a crash** present in 1.0.0: `self.font` was `nil`, so the lookup fell
+  through to the metatable and returned the *method* — a Lua function was handed to
+  `renderFontDrawText` instead of the font handle, and the game read a null `ImFont*`
+  field at address `0x4` (`0xC0000005` in `MoonLoader.asi`). The field is now
+  `fontRef`, and regression tests scan the sources for that whole class of bug.
 
 ---
 

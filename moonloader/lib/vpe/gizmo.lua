@@ -33,7 +33,6 @@ function M.new(project, options)
 		snap = options.snap or 0,
 		dragging = false,
 		before = nil,
-		targets = nil,
 		anchor = nil,
 		planeZ = 0,
 		lastError = nil,
@@ -102,7 +101,6 @@ function M:beginDrag(screenX, screenY, options)
 		return false, self.lastError
 	end
 
-	self.targets = list
 	self.before = self.project:capturePositions(list)
 	self.anchor = { wx = wx, wy = wy }
 	self.dragging = true
@@ -148,7 +146,6 @@ function M:finishDrag()
 		changed = true
 	end
 	self.before = nil
-	self.targets = nil
 	self.lastOffset = nil
 	return changed
 end
@@ -161,7 +158,6 @@ function M:cancelDrag()
 		self.project:setPositionsRaw(self.before)
 	end
 	self.before = nil
-	self.targets = nil
 	self.lastOffset = nil
 	return true
 end
@@ -264,13 +260,8 @@ end
 
 --- Coloca o node no jogador (ou no veiculo, se estiver dirigindo).
 function M:putAtPlayer(offset)
-	local x, y, z = 0, 0, 0
-	local got = false
-	if type(getCharCoordinates) == 'function' then
-		local ok, px, py, pz = pcall(getCharCoordinates, PLAYER_PED or 0)
-		if ok and type(px) == 'number' then x, y, z, got = px, py, pz, true end
-	end
-	if not got then return false, 'nao foi possivel ler a posicao do jogador' end
+	local x, y, z = util.playerCoords()
+	if not x then return false, T('ui.sem_jogador') end
 	return self:setToPoint(x, y, z + (offset or 0.7), { keepZ = false, label = T('log.node_jogador') })
 end
 

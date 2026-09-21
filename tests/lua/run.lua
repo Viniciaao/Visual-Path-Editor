@@ -22,6 +22,7 @@ local suites = {
 	'test_app',
 	'test_entry',
 	'test_i18n',
+	'test_guardas',
 }
 
 local filter = os.getenv('VPE_TEST_FILTER')

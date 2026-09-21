@@ -335,6 +335,44 @@ function M.hasFunction(tbl, name)
 	return type(tbl) == 'table' and type(tbl[name]) == 'function'
 end
 
+--------------------------------------------------------------------------------
+-- Jogador (nunca passar handle invalido para funcao nativa)
+--------------------------------------------------------------------------------
+
+local function globalFunction(name)
+	local fn = _G[name]
+	if type(fn) ~= 'function' then return nil end
+	return fn
+end
+
+--- Handle do ped do jogador, ou nil.
+--- IMPORTANTE: nunca usar "PLAYER_PED or 0". Handle 0 (ou negativo) e um
+--- ponteiro invalido para o jogo e algumas funcoes nativas leem memoria antes
+--- de checar - isso derruba o GTA com violacao de acesso (0xC0000005).
+function M.playerPed(checkExists)
+	local ped = PLAYER_PED
+	if type(ped) ~= 'number' then return nil end
+	if ped ~= ped or ped < 1 or ped > 100000 then return nil end
+	local doesCharExist = globalFunction('doesCharExist')
+	if doesCharExist and checkExists ~= false then
+		local ok, exists = pcall(doesCharExist, ped)
+		if ok and exists == false then return nil end
+	end
+	return ped
+end
+
+--- Posicao do jogador (x, y, z) ou nil. Sem handle valido, nem chama o jogo.
+function M.playerCoords()
+	local ped = M.playerPed()
+	if not ped then return nil end
+	local getCharCoordinates = globalFunction('getCharCoordinates')
+	if not getCharCoordinates then return nil end
+	local ok, x, y, z = pcall(getCharCoordinates, ped)
+	if not ok or type(x) ~= 'number' or type(y) ~= 'number' then return nil end
+	if x ~= x or y ~= y then return nil end
+	return x, y, z or 0.0
+end
+
 function M.now()
 	return os.date('%Y-%m-%d %H:%M:%S')
 end

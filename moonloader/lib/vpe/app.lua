@@ -28,7 +28,7 @@ local M = {}
 
 local T = i18n.t
 
-M.VERSION = '1.0.0'
+M.VERSION = '1.0.1'
 M.AREA_COUNT = 64
 
 M.VK_CONTROL = 0x11
@@ -61,9 +61,10 @@ end
 
 --- Posicao do jogador (nil quando o jogo nao esta pronto).
 local function playerPosition()
-	local x, y, z = call('getCharCoordinates', PLAYER_PED or 0)
-	if type(x) ~= 'number' then return nil end
-	return x, y, z or 0
+	-- util.playerCoords nunca passa handle invalido (nem 0) para o jogo
+	local x, y, z = util.playerCoords()
+	if not x then return nil end
+	return x, y, z
 end
 
 --------------------------------------------------------------------------------
@@ -1209,7 +1210,9 @@ end
 
 function M:teleportTo(x, y, z)
 	if type(setCharCoordinates) ~= 'function' then return false, 'sem jogo' end
-	local ok = pcall(setCharCoordinates, PLAYER_PED or 0, x, y, z or 10.0)
+	local ped = util.playerPed(false)
+	if not ped then return false end
+	local ok = pcall(setCharCoordinates, ped, x, y, z or 10.0)
 	if ok then
 		call('loadScene', x, y)
 		self.render:update()
@@ -1246,8 +1249,28 @@ end
 function M:toggleRender()
 	local conf = self.settings.render
 	conf.ativo = not conf.ativo
+	if conf.ativo and self.render then
+		-- ligar o visual de novo: zera o "modo leve" e avisa se o jogo nao
+		-- esta em condicoes de desenhar (pausa/carregando)
+		self.render.lightFactor = 1.0
+		self.render.slowFrames = 0
+		self.render.readyReason = nil
+		self.render.phase = 'ligado'
+	end
 	self:setStatus((conf.ativo and T('ui.enabled') or T('ui.disabled')) .. ': ' .. T('ui.visualizar'), 'info')
+	self:warnRenderState()
 	return conf.ativo
+end
+
+--- Aviso curto quando o desenho esta ligado mas o jogo nao deixa desenhar.
+function M:warnRenderState()
+	local render = self.render
+	if not render or not self.settings.render.ativo then return nil end
+	local reason = render.readyReason
+	if not reason then return nil end
+	local text = T('ui.render_aguardando', tostring(reason))
+	self:setStatus(text, 'warn')
+	return text
 end
 
 function M:frame()
@@ -1426,7 +1449,18 @@ end
 
 function M:drawWorld()
 	if not self.settings.render.ativo then return false end
-	return self.render:draw()
+	local result = self.render:draw()
+	if (self.settings.geral or {}).log_api and self.log then
+		-- log de diagnostico: a ultima linha antes de um travamento diz em que
+		-- fase do desenho ele aconteceu
+		local now = self:now()
+		if self.logPhase ~= self.render.phase or (now - (self.logPhaseTime or -999)) >= 2.0 then
+			self.logPhase = self.render.phase
+			self.logPhaseTime = now
+			self.log.info('desenho: fase=%s %s', tostring(self.render.phase), self.render:statsLine())
+		end
+	end
+	return result
 end
 
 function M:runtimeInfo()

@@ -54,7 +54,8 @@ t.describe('render - projecao e culling', function()
 		local p, r = fixture()
 		r:update()
 		t.eq(r:drawNodes(), 3)
-		t.eq(#callsOf('poly'), 3)
+		t.eq(#callsOf('box'), 3, 'padrao: caixa (funcao mais antiga e testada)')
+		t.eq(#callsOf('poly'), 0, 'poligono fica desligado por padrao')
 
 		mock.reset()
 		local area = p:area(15)
@@ -113,7 +114,7 @@ t.describe('render - projecao e culling', function()
 		local index = p:addNavi(15, 2497, -1684, 15, 1)
 		r:update()
 		t.eq(r:drawNavis(), 1)
-		t.eq(#callsOf('poly'), 1)
+		t.eq(#callsOf('box'), 1)
 		local lines = callsOf('line')
 		t.eq(#lines, 1, 'tracinho da direcao')
 	end)
@@ -123,13 +124,138 @@ t.describe('render - projecao e culling', function()
 		local p, r = fixture()
 		p:select(15, 1)
 		t.ok(r:draw())
-		t.ok(#callsOf('poly') >= 3)
+		t.ok(#callsOf('box') >= 3)
 		local texts = callsOf('text')
 		t.ok(#texts >= 1, 'escreveu no HUD')
 		local joined = ''
 		for _, call in ipairs(texts) do joined = joined .. call[2] .. '\n' end
 		t.contains(joined, 'Node 0')
 		t.contains(joined, 'Nodes: 3')
+	end)
+
+	t.test('poligonos so quando pedido na configuracao', function()
+		mock.reset()
+		local p, r = fixture({ render = { ativo = true, distancia = 250, usar_poligonos = true } })
+		r:update()
+		t.eq(r:drawNodes(), 3)
+		t.eq(#callsOf('poly'), 3)
+		t.eq(#callsOf('box'), 0)
+			local poly = callsOf('poly')[1]
+			t.eq(poly[4], 12, 'largura = 2 x raio')
+			t.eq(poly[5], 12, 'altura = 2 x raio')
+			t.eq(poly[6], 4, 'quadrado para node de carro')
+			t.eq(poly[7], 0, 'sem rotacao')
+	end)
+
+	t.test('nao desenha com o jogo pausado (evita projetar na pausa)', function()
+		mock.reset()
+		local p, r = fixture()
+		mock.gamePaused = true
+		t.eq(r:draw(), false)
+		t.eq(#mock.renderCalls, 0, 'nada foi desenhado')
+		t.eq(r.readyReason, 'jogo pausado')
+		t.eq(r.phase, 'esperando')
+		mock.reset()
+	end)
+
+	t.test('nao desenha sem jogador no mundo', function()
+		mock.reset()
+		local p, r = fixture()
+		mock.playerPlaying = false
+		t.eq(r:draw(), false)
+		t.eq(#mock.renderCalls, 0)
+		t.ok(r.readyReason ~= nil)
+
+		mock.playerPlaying = true
+		mock.setPlayerPed(nil)
+		t.eq(r:draw(), false, 'sem handle do ped')
+		t.ok(r.readyReason ~= nil)
+		mock.reset()
+	end)
+
+	t.test('nunca passa handle invalido para o jogo', function()
+		mock.reset()
+		local p, r = fixture()
+		mock.setPlayerPed(0) -- handle 0 = ponteiro invalido no GTA
+		t.eq(r:draw(), false)
+		t.eq(mock.badHandleCalls or 0, 0, 'nenhuma chamada com handle 0')
+		local x, y = r:playerPos()
+		t.eq(x, 0)
+		t.eq(y, 0)
+		mock.setPlayerPed(nil)
+		t.eq(r:draw(), false)
+		t.eq(mock.badHandleCalls or 0, 0, 'nenhuma chamada sem handle')
+		mock.reset()
+	end)
+
+	t.test('coordenada invalida nao chega na api de desenho', function()
+		mock.reset()
+		local p, r = fixture()
+		local area = p:area(15)
+		area.nodes[2].x = 0 / 0 -- NaN
+		area.nodes[3].x = math.huge
+		r:update()
+		t.eq(r:drawNodes(), 1, 'so o node valido foi desenhado')
+			for _, call in ipairs(mock.renderCalls) do
+				-- as coordenadas de tela sao os primeiros argumentos (a cor ARGB
+				-- e um inteiro grande e nao entra nesta checagem)
+				for i = 2, 6 do
+					local v = call[i]
+					if type(v) == 'number' then
+						t.ok(v == v, 'sem NaN nas chamadas de desenho')
+						t.ok(v ~= math.huge and v ~= -math.huge, 'sem infinito nas chamadas de desenho')
+					end
+				end
+			end
+	end)
+
+	t.test('teto de nodes por quadro e respeitado', function()
+		mock.reset()
+		local p = model.new()
+		local area = dat.newArea(17)
+		area.isNew = false
+		for i = 1, 50 do
+			area.nodes[i] = makeNode(2495 + i * 0.2, -1684, 10)
+		end
+		area.vehCount = 50
+		p:loadArea(17, area)
+		local r = render.new(p, { render = { ativo = true, distancia = 250, max_nodes = 10, max_navis = 5, tamanho_node = 4 } })
+		r:update()
+		t.eq(r:drawNodes(), 10)
+		t.ok(r.stats.skipped >= 40, 'contou o que sobrou')
+	end)
+
+	t.test('modo leve corta o desenho quando os quadros ficam caros', function()
+		mock.reset()
+		local p = model.new()
+		local area = dat.newArea(18)
+		area.isNew = false
+		for i = 1, 100 do
+			area.nodes[i] = makeNode(2495 + i * 0.2, -1684, 10)
+		end
+		area.vehCount = 100
+		p:loadArea(18, area)
+		local r = render.new(p, { render = { ativo = true, distancia = 250, modo_leve = true, max_nodes = 100 } })
+		r:update()
+		t.eq(r:budget().nodes, 100)
+		t.eq(r:drawNodes(), 100)
+		for i = 1, 25 do
+			r:measure(0.05) -- 50 ms por quadro
+		end
+		t.eq(r.lightFactor, 0.35)
+		t.ok(r:budget().nodes < 100, 'teto reduzido no modo leve')
+		r:update()
+		t.eq(r:drawNodes(), 35, 'desenhou 35% do orcamento')
+	end)
+
+	t.test('statsLine resume o que foi desenhado', function()
+		mock.reset()
+		local p, r = fixture()
+		r:update()
+		r:drawNodes()
+		local line = r:statsLine()
+		t.contains(line, 'nodes=3')
+		t.contains(line, 'ms=')
 	end)
 
 	t.test('renderizacao desligada nao desenha nada', function()
@@ -247,6 +373,19 @@ t.describe('render - cores', function()
 		t.eq(r.colors.veh, util.argb(255, 255, 0, 0))
 		t.eq(r.colors.ped, util.argb(255, 0, 255, 0))
 		t.ok(r.colors.link ~= nil, 'cor padrao mantida')
+	end)
+
+	t.test('fonte que falha nao e recriada a cada quadro', function()
+		mock.reset()
+		local realCreate = _G.renderCreateFont
+		local creates = 0
+		_G.renderCreateFont = function() creates = creates + 1 return nil end
+		local p, r = fixture()
+		t.eq(r:font(), nil)
+		t.eq(r.fontFailed, true)
+		t.eq(r:font(), nil)
+		t.eq(creates, 1, 'tentou uma unica vez')
+		_G.renderCreateFont = realCreate
 	end)
 
 	t.test('fontes: sem api de fonte o modulo nao quebra', function()

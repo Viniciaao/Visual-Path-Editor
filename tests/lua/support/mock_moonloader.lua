@@ -14,6 +14,11 @@ M.screen = { width = 1920, height = 1080 }
 M.playerPos = { x = 2495.0, y = -1684.0, z = 10.0 }
 M.groundZ = 10.0
 M.waterZ = -100.0
+M.playerHandle = 0
+M.playerPedHandle = 2495
+M.pedExists = true
+M.playerPlaying = true
+M.gamePaused = false
 
 local function fileExists(path)
 	local f = io.open(path, 'rb')
@@ -73,9 +78,25 @@ function M.install()
 	_G.renderEnd = function() end
 	_G.renderVertex = function() end
 	_G.renderCreateFont = function(name, size, flags) return { name = name, size = size, flags = flags } end
-	_G.renderFontDrawText = function(font, text, x, y, color) M.renderCalls[#M.renderCalls + 1] = { 'text', text, x, y, color } end
-	_G.renderGetFontDrawTextLength = function(font, text) return #tostring(text) * 6 end
-	_G.renderGetFontDrawHeight = function(font) return 12 end
+	-- o jogo real le a fonte como ponteiro: passar qualquer coisa que nao seja
+	-- a fonte (nil, numero, FUNCAO) derruba o GTA com leitura em 0x4. O mock
+	-- tambem recusa, para o erro aparecer no teste em vez de no jogo.
+	local function checkFont(font)
+		if type(font) ~= 'table' then
+			error('fonte invalida passada para a api de texto: ' .. type(font), 2)
+		end
+		return font
+	end
+	M.checkFont = checkFont
+	_G.renderFontDrawText = function(font, text, x, y, color)
+		checkFont(font)
+		M.renderCalls[#M.renderCalls + 1] = { 'text', text, x, y, color }
+	end
+	_G.renderGetFontDrawTextLength = function(font, text)
+		checkFont(font)
+		return #tostring(text) * 6
+	end
+	_G.renderGetFontDrawHeight = function(font) checkFont(font) return 12 end
 	_G.getScreenResolution = function() return M.screen.width, M.screen.height end
 
 	-- 3D -> 2D (projecao simples e deterministica, so para os testes)
@@ -92,8 +113,26 @@ function M.install()
 	end
 	_G.isPointOnScreen = function(x, y, z, radius) return true end
 
+	-- jogador (o MoonLoader expoe estes globais)
+	M.refreshPlayer()
+	_G.doesCharExist = function(char)
+		if not M.pedExists then return false end
+		return char == M.playerPedHandle
+	end
+	_G.isPlayerPlaying = function(handle) return M.playerPlaying == true end
+	_G.isGamePaused = function() return M.gamePaused == true end
+	_G.getPlayerHandle = function() return M.playerHandle end
+	_G.getPlayerPed = function() return M.playerPedHandle end
+
 	-- mundo
-	_G.getCharCoordinates = function() return M.playerPos.x, M.playerPos.y, M.playerPos.z end
+	_G.getCharCoordinates = function(char)
+		if char ~= nil and char ~= M.playerPedHandle then
+			-- imita o jogo: handle invalido nao devolve coordenada
+			M.badHandleCalls = (M.badHandleCalls or 0) + 1
+			return 0, 0, 0
+		end
+		return M.playerPos.x, M.playerPos.y, M.playerPos.z
+	end
 	_G.setCharCoordinates = function(char, x, y, z) M.playerPos.x, M.playerPos.y, M.playerPos.z = x, y, z end
 	_G.setPlayerCoordinates = _G.setCharCoordinates
 	_G.getGroundZFor3dCoord = function() return M.groundZ end
@@ -400,12 +439,34 @@ function M.releaseKeys()
 	M.keyJustPressed = {}
 end
 
+--- Atualiza os globais do jogador (o MoonLoader faz isso sozinho no jogo).
+function M.refreshPlayer()
+	_G.PLAYER_HANDLE = M.playerHandle
+	_G.PLAYER_PED = M.playerPedHandle
+	_G.PLAYER_ACTOR = M.playerPedHandle
+	_G.PLAYER_CHAR = M.playerPedHandle
+end
+
+--- Simula a ausencia do jogador (jogo carregando, morto, etc).
+function M.setPlayerPed(ped)
+	M.playerPedHandle = ped
+	M.refreshPlayer()
+end
+
 function M.reset()
 	M.renderCalls = {}
 	M.keyState = {}
 	M.keyJustPressed = {}
 	M.resetImgui()
 	M.uiStack = {}
+	-- jogador de volta ao normal (os testes podem ter simulado ausencia)
+	M.playerHandle = 0
+	M.playerPedHandle = 2495
+	M.pedExists = true
+	M.playerPlaying = true
+	M.gamePaused = false
+	M.badHandleCalls = 0
+	M.refreshPlayer()
 end
 
 return M

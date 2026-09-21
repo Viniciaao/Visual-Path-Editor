@@ -717,8 +717,8 @@ function M.checkInGame(project, areaId, options)
 	local maxDistance = options.maxDistance or 200.0
 	local px, py = options.px or 0, options.py or 0
 	if options.px == nil and type(getCharCoordinates) == 'function' then
-		local ok, x, y = pcall(getCharCoordinates, PLAYER_PED or 0)
-		if ok and type(x) == 'number' then px, py = x, y end
+		local cx, cy = util.playerCoords()
+		if cx then px, py = cx, cy end
 	end
 
 	for i = 1, #area.nodes do

@@ -139,13 +139,11 @@ function M:available()
 end
 
 --- O mouse esta livre para interagir com o mundo (fora das janelas)?
+--- Usa o valor guardado no ultimo quadro do ImGui: getIO/GetIO so pode ser
+--- chamado dentro do desenho da interface, nunca no loop do script.
 function M:worldMouseEnabled()
 	if not self.visible or not self.binding then return false end
-	local io = self:getIO()
-	if io and io.WantCaptureMouse ~= nil then
-		local ok, value = pcall(function() return io.WantCaptureMouse end)
-		if ok and type(value) == 'boolean' then return not value end
-	end
+	if type(self.wantCaptureMouse) == 'boolean' then return not self.wantCaptureMouse end
 	return true
 end
 
@@ -406,13 +404,13 @@ end
 function M:endPopup() self:call('EndPopup') end
 function M:closeCurrentPopup() self:call('CloseCurrentPopup') end
 
+--- Tabela de estado do ImGui (GetIO). Buscada a cada chamada e so dentro do
+--- quadro: guardar o ponteiro entre quadros pode virar ponteiro invalido.
 function M:getIO()
 	if not self.binding then return nil end
-	if not self.ioRef then
-		local ok, io = pcall(function() return self.binding.GetIO and self.binding.GetIO() end)
-		if ok then self.ioRef = io end
-	end
-	return self.ioRef
+	local ok, io = pcall(function() return self.binding.GetIO and self.binding.GetIO() end)
+	if ok then return io end
+	return nil
 end
 
 function M:tooltip(text)
@@ -486,6 +484,20 @@ function M:frame()
 		if self.binding.Process ~= nil then self.binding.Process = self.visible end
 	end)
 	if not self.visible then return false end
+
+	-- estado do mouse/teclado do ImGui: so pode ser lido aqui dentro
+	local okFlags, wantMouse, wantKeys = pcall(function()
+		local io = self:getIO()
+		if not io then return nil, nil end
+		return io.WantCaptureMouse, io.WantCaptureKeyboard
+	end)
+	if okFlags and type(wantMouse) == 'boolean' then
+		self.wantCaptureMouse = wantMouse
+		self.wantCaptureKeyboard = wantKeys
+	else
+		self.wantCaptureMouse = false
+	end
+
 	local app = self.app
 	self:drawWindow()
 	self:drawConfirm()
@@ -993,7 +1005,8 @@ function M:draw_criar_tab()
 	if self:button(T('cr.criar_no_player')) then
 		local px, py, pz = nil, nil, nil
 		if type(getCharCoordinates) == 'function' then
-			local ok, x, y, z = pcall(getCharCoordinates, PLAYER_PED or 0)
+			local x, y, z = util.playerCoords()
+			local ok = x ~= nil
 			if ok then px, py, pz = x, y, z end
 		end
 		if px then
@@ -1280,6 +1293,9 @@ function M:draw_config_tab()
 			function(v) settings.geral.carregar_vizinhas = v end)
 		self:checkboxBinding(T('cfg.debug'), 'bool', 'cfg_debug', settings.geral.debug == true,
 			function(v) settings.geral.debug = v log.debugEnabled = v end)
+		self:checkboxBinding(T('cfg.log_api'), 'bool', 'cfg_logapi', settings.geral.log_api == true,
+			function(v) settings.geral.log_api = v end)
+		self:textDim(T('cfg.log_api_dica'))
 		self:text('%s: %s', T('cfg.areas_extras'), tostring(settings.geral.areas_extras or ''))
 	end
 
@@ -1293,6 +1309,28 @@ function M:draw_config_tab()
 		if aChanged then settings.render.altura_nodes = altura end
 		local tChanged, tamanho = self:labeledSlider(T('cfg.tamanho_node'), 'float', 'cfg_tamanho', settings.render.tamanho_node, 2, 24, 0.5)
 		if tChanged then settings.render.tamanho_node = tamanho end
+		-- limites de desenho: se algo der errado no jogo, e aqui que se corta
+		self:textDim(T('cfg.render_limites'))
+		local render = app.render
+		if render then
+			local state = tostring(render.phase or '?')
+			if render.readyReason then state = state .. ': ' .. tostring(render.readyReason) end
+			if (render.lightFactor or 1) < 1 then state = state .. string.format(' (%.0f%%)', render.lightFactor * 100) end
+			self:textDim(T('cfg.estado_render', state))
+		end
+		self:checkboxBinding(T('cfg.exigir_jogo_pronto'), 'bool', 'cfg_ready', settings.render.exigir_jogo_pronto ~= false,
+			function(v) settings.render.exigir_jogo_pronto = v end)
+		self:checkboxBinding(T('cfg.usar_poligonos'), 'bool', 'cfg_poly', settings.render.usar_poligonos == true,
+			function(v) settings.render.usar_poligonos = v end)
+		self:checkboxBinding(T('cfg.modo_leve'), 'bool', 'cfg_leve', settings.render.modo_leve ~= false,
+			function(v)
+				settings.render.modo_leve = v
+				if v and app.render then app.render.lightFactor = 1.0 end
+			end)
+		local mnChanged, maxNodes = self:labeledSlider(T('cfg.max_nodes'), 'int', 'cfg_maxnodes', settings.render.max_nodes or 600, 20, 4000, 10)
+		if mnChanged then settings.render.max_nodes = maxNodes end
+		local nvChanged, maxNavis = self:labeledSlider(T('cfg.max_navis'), 'int', 'cfg_maxnavis', settings.render.max_navis or 300, 10, 2000, 10)
+		if nvChanged then settings.render.max_navis = maxNavis end
 		self:textDim(T('cfg.cores'))
 		-- cor editavel: campo de texto "#RRGGBB" (o valor so entra se for valido)
 		local function colorBinding(label, key, field)

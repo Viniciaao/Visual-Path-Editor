@@ -16,13 +16,22 @@ M.defaults = {
 	geral = {
 		idioma = 'pt',
 		debug = false,
+		-- grava no log, a cada quadro, a fase do desenho (ajuda a achar travamentos)
+		log_api = false,
 		carregar_vizinhas = true,
 		areas_extras = '',
 	},
 	render = {
 		ativo = true,
-		distancia = 250.0,
+		-- desenhar so com o jogador no mundo (fora do carregamento/pausa)
+		exigir_jogo_pronto = true,
+		-- teto de primitivas por quadro (protege o jogo e o FPS)
 		max_linhas = 900,
+		max_nodes = 600,
+		max_navis = 300,
+		usar_poligonos = false,
+		modo_leve = true,
+		distancia = 250.0,
 		mostrar_nodes = true,
 		mostrar_links = true,
 		mostrar_navis = true,
