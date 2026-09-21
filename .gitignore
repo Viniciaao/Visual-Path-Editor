@@ -1,0 +1,8 @@
+# artefatos de teste / saidas locais
+tests/tmp/
+*.log
+*.bak
+tmp/
+export/
+__pycache__/
+*.pyc
