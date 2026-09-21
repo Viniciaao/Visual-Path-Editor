@@ -195,6 +195,27 @@ t.describe('sources - gravacao', function()
 		t.eq(result.img, nil)
 	end)
 
+	t.test('confere o arquivo gravado e falha se o disco entregar outra coisa', function()
+		baseScenario()
+		local src = newSources()
+		local newData = areaBytes(15, 2460)
+		local originalWrite = fs.writeAll
+		fs.writeAll = function(path, data)
+			-- simula uma gravacao truncada (disco cheio, por exemplo) no override
+			if tostring(path):find('/VisualPath/gta3%.img/', 1) then
+				return originalWrite(path, data:sub(1, #data - 40))
+			end
+			return originalWrite(path, data)
+		end
+		local result = src:save(15, newData)
+		fs.writeAll = originalWrite
+
+		t.eq(result.ok, false, 'nao pode dizer que salvou')
+		t.ok(#result.errors >= 1, 'explicou o problema')
+		t.contains(table.concat(result.errors, ' '), 'nao confere')
+		t.eq(readFile(MODLOADER .. '/VisualPath/export/nodes15.dat'), newData, 'o export ficou certo')
+	end)
+
 	t.test('cria backup do original antes de gravar', function()
 		baseScenario()
 		local src = newSources()

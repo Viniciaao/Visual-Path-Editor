@@ -359,6 +359,23 @@ function M:makeBackup(areaId)
 	return true, dest
 end
 
+--- Le o arquivo de volta e confere com o que foi gravado ("gravou mesmo?").
+--- Um arquivo cortado/truncado no meio nao pode passar como sucesso.
+local function verifyWritten(path, data, result)
+	if not path then return false end
+	local back = fs.readAll(path)
+	if back == nil then
+		result.errors[#result.errors + 1] = T('save.verify_falha', tostring(path), 'arquivo ilegivel')
+		return false
+	end
+	if back ~= data then
+		result.errors[#result.errors + 1] = T('save.verify_falha', tostring(path),
+			string.format('%d bytes gravados, esperado %d', #back, #data))
+		return false
+	end
+	return true
+end
+
 --- Grava os bytes de uma area.
 --- Devolve resultado = { written = {caminhos}, img = bool, errors = {}, exportPath =, mainPath = }
 function M:save(areaId, data, options)
@@ -380,22 +397,22 @@ function M:save(areaId, data, options)
 		fs.mkdir(self.ownImgFolder)
 		local target = self:targetPath(areaId)
 		local ok, err = fs.writeAll(target, data)
-		if ok then
+		if ok and verifyWritten(target, data, result) then
 			result.mainPath = target
 			result.written[#result.written + 1] = target
 			wrote = true
-		else
+		elseif not ok then
 			result.errors[#result.errors + 1] = T('save.falha_escrita', tostring(err))
 		end
 	elseif self.writeExport then
 		fs.mkdir(self.exportFolder)
 		local target = self:exportPath(areaId)
 		local ok, err = fs.writeAll(target, data)
-		if ok then
+		if ok and verifyWritten(target, data, result) then
 			result.mainPath = target
 			result.written[#result.written + 1] = target
 			wrote = true
-		else
+		elseif not ok then
 			result.errors[#result.errors + 1] = T('save.falha_escrita', tostring(err))
 		end
 	end
@@ -404,10 +421,10 @@ function M:save(areaId, data, options)
 		fs.mkdir(self.exportFolder)
 		local target = self:exportPath(areaId)
 		local ok, err = fs.writeAll(target, data)
-		if ok then
+		if ok and verifyWritten(target, data, result) then
 			result.exportPath = target
 			result.written[#result.written + 1] = target
-		else
+		elseif not ok then
 			result.errors[#result.errors + 1] = T('save.falha_escrita', tostring(err))
 		end
 	end

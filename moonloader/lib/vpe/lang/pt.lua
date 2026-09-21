@@ -73,6 +73,7 @@ return {
 ['save.salvo'] = 'Salvo. (%s, %d arquivo(s))',
 ['save.salvo_img'] = 'Salvo e importado no gta3.img: %s',
 ['save.falha_validacao'] = 'Salvamento bloqueado pela validacao: %d erro(s), %d aviso(s).',
+['save.verify_falha'] = 'O arquivo gravado nao confere (%s): %s',
 ['save.falha_escrita'] = 'Falha ao escrever: %s',
 ['save.backup_ok'] = 'Backup criado em %s',
 ['save.backup_falha'] = 'Nao foi possivel criar o backup: %s',

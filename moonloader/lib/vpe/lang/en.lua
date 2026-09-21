@@ -73,6 +73,7 @@ return {
 ['save.salvo'] = 'Saved. (%s, %d file(s))',
 ['save.salvo_img'] = 'Saved and imported into gta3.img: %s',
 ['save.falha_validacao'] = 'Save blocked by validation: %d error(s), %d warning(s).',
+['save.verify_falha'] = 'The written file does not match (%s): %s',
 ['save.falha_escrita'] = 'Write failed: %s',
 ['save.backup_ok'] = 'Backup created at %s',
 ['save.backup_falha'] = 'Could not create the backup: %s',
