@@ -223,15 +223,31 @@ end
 -- Areas
 --------------------------------------------------------------------------------
 
+--- As entradas do gta3.img sao gravadas em blocos de 2048 bytes, entao um
+--- nodes*.dat lido de la vem com zeros sobrando no fim. Corta o excesso para o
+--- arquivo em memoria ser exatamente o mesmo que o editor grava (senao o
+--- "round-trip" e o diff acusariam diferenca que nao existe).
+local function trimToFormat(data, area)
+	local expected = dat.expectedSize(dat.counts(area))
+	if type(data) == 'string' and #data > expected then
+		return data:sub(1, expected), #data - expected
+	end
+	return data, 0
+end
+
 local function readArea(project, source, areaId)
 	local data, err, info = source:read(areaId)
 	if not data then return nil, err, info end
 	local area, perr = dat.parse(data, areaId)
 	if not area then return nil, perr, info end
+	local trimmed, dropped = trimToFormat(data, area)
 	area.source = info and info.source or 'desconhecido'
 	area.path = info and info.path
 	area.isNew = false
-	return area, nil, info, data
+	if dropped > 0 then
+		log.info('area %d: %d byte(s) de preenchimento do gta3.img descartados', areaId, dropped)
+	end
+	return area, nil, info, trimmed
 end
 
 --- Carrega uma area (bytes do modloader, do gta3.img ou um arquivo novo).
@@ -256,6 +272,35 @@ function M:loadArea(areaId, options)
 		self.originals[areaId] = raw
 	end
 	if self.log then log.info(T('log.area_carregada', areaId, #area.nodes)) end
+	return true
+end
+
+--- Cria uma area vazia na memoria (para areas que ainda nao tem arquivo).
+--- Nao sobrescreve nada: se ja existe arquivo em algum lugar, recusa.
+function M:newArea(areaId, options)
+	options = options or {}
+	areaId = tonumber(areaId)
+	if not areaId or areaId < 0 or areaId > M.AREA_COUNT - 1 then
+		return false, T('area.invalida')
+	end
+	if self.project:area(areaId) and not options.force then
+		return false, T('area.ja_carregada', areaId)
+	end
+	local info = self.sources:info(areaId)
+	if info and info.exists and not options.force then
+		return false, T('area.ja_existe', areaId, tostring(info.source))
+	end
+
+	local area = dat.newArea(areaId)
+	area.isNew = true
+	area.source = 'memoria'
+	area.path = nil
+	self.project:loadArea(areaId, area, { exists = false, source = 'memoria', path = nil })
+	self.project.meta[areaId] = { area = areaId, exists = true, counts = dat.counts(area), source = 'memoria' }
+	self:markEdited(areaId)
+	self:clearSelection()
+	self:setStatus(T('area.criada', areaId, areaId), 'info')
+	if self.log then log.info('area %d criada na memoria (salvar gera o arquivo)', areaId) end
 	return true
 end
 
@@ -411,6 +456,13 @@ function M:selectNavi(areaId, index)
 	self.project.navisHighlight = index
 	self.project:select(areaId, nil, index)
 	return true
+end
+
+--- Posicao do jogador (nil/erro quando o jogo nao esta pronto).
+function M:playerPosition()
+	local x, y, z = playerPosition()
+	if not x then return nil end
+	return x, y, z
 end
 
 function M:clearSelection()
@@ -581,19 +633,24 @@ function M:createNode(kind, x, y, z)
 	local areaId = geo.areaFromCoords(x, y)
 	if not self.project:area(areaId) then
 		local ok, err = self:loadArea(areaId)
-		if not ok then return false, err end
-		self:setStatus(T('log.area_carregada', areaId, self.project:countNodes(areaId)), 'info')
+		if not ok then
+			-- nao existe arquivo para essa area: comeca uma area vazia
+			local created, cerr = self:newArea(areaId)
+			if not created then return false, cerr or err end
+		else
+			self:setStatus(T('log.area_carregada', areaId, self.project:countNodes(areaId)), 'info')
+		end
 	end
 
 	if kind == 'navi' then
 		local targetIndex, targetArea = nil, nil
 		local nearest = self.project:nearestNode(areaId, x, y, 60.0, 'vehicle')
-		if nearest then targetArea, targetIndex = areaId, nearest end
+		if nearest then targetArea, targetIndex = areaId, nearest.index end
 		if not targetIndex then
 			for _, otherId in ipairs(self.project:loadedAreas()) do
 				if otherId ~= areaId then
 					local other = self.project:nearestNode(otherId, x, y, 60.0, 'vehicle')
-					if other then targetArea, targetIndex = otherId, other break end
+					if other then targetArea, targetIndex = otherId, other.index break end
 				end
 			end
 		end
@@ -615,10 +672,11 @@ function M:createNode(kind, x, y, z)
 
 	if self.linkMode == 'auto' then
 		local nearest = self.project:nearestNode(areaId, x, y, 40.0, kind == 'ped' and 'ped' or 'vehicle')
-		if nearest and nearest ~= index then
-			self.project:addLink(areaId, index, areaId, nearest, { oneWay = false })
+		-- nearestNode devolve { index, node, distance }: o link precisa do indice
+		if nearest and nearest.index ~= index then
+			self.project:addLink(areaId, index, areaId, nearest.index, { oneWay = false })
 			if self.settings.edicao.criar_navi_automatico then
-				local linkIndex = self.project:findLink(self.project:node(areaId, index), areaId, nearest - 1)
+				local linkIndex = self.project:findLink(self.project:node(areaId, index), areaId, nearest.index - 1)
 				if linkIndex then self.project:addNaviOnSegment(areaId, index, linkIndex) end
 			end
 		end

@@ -172,6 +172,13 @@ t.describe('app - ambiente e fontes', function()
 		t.ok(loaded, tostring(err))
 		t.eq(A.sources:info(15).source, 'img')
 		t.eq(#A.project:area(15).nodes, 4)
+
+		-- dentro do gta3.img o arquivo ocupa setores de 2048 bytes: o mod guarda
+		-- so a parte que pertence ao formato, senao o round-trip acusaria diferenca
+		local area = A.project:area(15)
+		t.eq(#A.originals[15], dat.expectedSize(dat.counts(area)), 'bytes do IMG cortados no tamanho do formato')
+		local report = selftest.roundTrip(A, { 15 })
+		t.eq(report.failed, 0, report.tests[1] and report.tests[1].text or '')
 	end)
 
 	t.test('area sem arquivo nenhum da erro explicado', function()
@@ -180,6 +187,46 @@ t.describe('app - ambiente e fontes', function()
 		local ok, err = A:loadArea(20)
 		t.eq(ok, false)
 		t.contains(err, 'nodes20.dat')
+	end)
+
+	t.test('area sem arquivo nenhum vira uma area nova ao criar node', function()
+		resetScenario()
+		local A = newApp()
+		local ok, err = A:loadArea(20)
+		t.eq(ok, false, 'nao existe nodes20.dat')
+
+		-- criar um node numa area sem arquivo comeca a area do zero
+		-- (300, -1000) esta na area 20: coluna 4, linha 2 da grade de 750
+		t.eq(geo.areaFromCoords(300.0, -1000.0), 20)
+		local created, index = A:createNode('veh', 300.0, -1000.0, 12.0)
+		t.ok(created, 'criou o node: ' .. tostring(index))
+		t.eq(index, 1, 'primeiro node da area nova')
+		t.eq(#A.project:loadedAreas(), 1)
+		local area = A.project:area(20)
+		t.eq(#area.nodes, 1)
+		t.eq(area.isNew, true)
+		t.ok(A.project:isDirty(20), 'area marcada como alterada')
+
+		-- e o arquivo so nasce quando salvar
+		t.eq(fs.exists(ML .. '/VisualPath/gta3.img/nodes20.dat'), false, 'nada gravado ainda')
+		local report = A:validate({ inGame = false, silent = true })
+		t.eq(report.errors, 0)
+		local result = A:save({ confirmed = true })
+		t.eq(result.ok, true, tostring(result.reason))
+		local written = ML .. '/VisualPath/gta3.img/nodes20.dat'
+		t.eq(fs.exists(written), true, 'arquivo criado')
+		local back = dat.parse(fs.readAll(written), 20)
+		t.ok(back, 'o arquivo gravado e legivel')
+		t.eq(#back.nodes, 1)
+		t.eq(back.vehCount, 1)
+	end)
+
+	t.test('criar area vazia nao sobrescreve arquivo existente', function()
+		local A = liveApp()
+		local ok, err = A:newArea(15)
+		t.eq(ok, false, 'area 15 tem arquivo')
+		t.contains(tostring(err), '15')
+		t.eq(#A.project:area(15).nodes, 4, 'nada mudou')
 	end)
 
 	t.test('followPlayerTick carrega a area do jogador', function()
@@ -221,6 +268,43 @@ t.describe('app - edicao', function()
 		t.eq(#A.project:area(15).nodes, 5)
 		t.eq(A.project:area(15).vehCount, 5)
 		t.ok(A.project:area(15).nodes[5].x > 0)
+	end)
+
+	t.test('criar node no modo automatico ja liga no node mais proximo', function()
+		local A = liveApp()
+		A.linkMode = 'auto'
+		local ok, index = A:createNode('veh')
+		t.ok(ok)
+		local node = A.project:node(15, index)
+		t.ok(#node.links >= 1, 'o node novo ganhou link')
+		local target = A.project:node(15, node.links[1].node + 1)
+		t.ok(target ~= nil, 'o link aponta para um node que existe')
+		t.ok(index ~= node.links[1].node + 1, 'nao linka nele mesmo')
+		local back = false
+		for i = 1, #target.links do
+			if target.links[i].area == 15 and target.links[i].node == index - 1 then back = true end
+		end
+		t.ok(back, 'o link de volta tambem foi criado')
+	end)
+
+	t.test('criar um navi node associa ao node de veiculo mais proximo', function()
+		local A = liveApp()
+		local ok, naviIndex = A:createNode('navi', 2496.0, -1684.0, 10.0)
+		t.ok(ok, 'criou o navi')
+		local area = A.project:area(15)
+		t.eq(#area.navis, 2)
+		local navi = area.navis[naviIndex]
+		t.eq(navi.areaID, 15, 'aponta para a area certa')
+		t.ok(navi.nodeID < #area.nodes, 'aponta para um node que existe: ' .. tostring(navi.nodeID))
+		t.eq(A.project.selection.navi, naviIndex, 'o navi novo ficou selecionado')
+	end)
+
+	t.test('sem nenhum node de veiculo por perto, o navi nao e criado', function()
+		local A = liveApp()
+		local ok, err = A:createNode('navi', 2000.0, -1684.0, 10.0)
+		t.eq(ok, false)
+		t.ok(tostring(err):len() > 0, 'explicou o motivo')
+		t.eq(#A.project:area(15).navis, 1, 'nada foi criado')
 	end)
 
 	t.test('criar link pela origem marcada', function()
@@ -277,8 +361,10 @@ t.describe('app - edicao', function()
 
 	t.test('apagar node sem links apaga direto', function()
 		local A = liveApp()
+		A.linkMode = 'manual' -- sem link automatico: o node novo nasce solto
 		local _, index = A:createNode('veh')
 		A:selectNode(15, index)
+		t.eq(#A.project:node(15, index).links, 0)
 		t.ok(A:deleteSelected(false))
 		t.eq(#A.project:area(15).nodes, 4)
 		t.ok(A:undo())

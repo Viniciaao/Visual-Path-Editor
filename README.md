@@ -101,7 +101,7 @@ Quando você salva, o mod escreve **três cópias**:
 | **Editor** | lista e edita o node selecionado: coordenadas, tipo (veículo/pedestre/barco), largura, flood fill, todas as flags, links e o navi node do link |
 | **Navi** | cria/edita/remove navi nodes: alvo, direção, largura, faixas, semáforo, trem; gerar em lote e remover os inúteis |
 | **Criar/Remover** | escolhe o tipo, cria na mira/no jogador, liga/desliga espelhamento de links, bloqueio manual de nodes, apagar node |
-| **Área** | lista as 64 áreas (quantos nodes/links/navis cada uma), carrega/descarrega, mostra de onde o arquivo veio |
+| **Área** | lista as 64 áreas (quantos nodes/links/navis cada uma), carrega/descarrega, mostra de onde o arquivo veio e cria uma **área vazia** para arquivos que ainda não existem |
 | **Salvar** | resumo do que mudou, validação, salvar / salvar como / reverter / restaurar backup |
 | **Câmera** | teleporte e ajustes de visualização (distância, cores, mapa) |
 | **Configurações** | idioma, teclas, render, passos, espelhamento, restaurar padrões |
@@ -151,6 +151,9 @@ com índice velho).
   (10 bits de ID + 6 bits de área). Comprimentos: 1 byte. Interseções: 1 byte.
 * Cauda de 192 bytes: os bytes originais são **preservados** ao salvar.
 * Máximo de 15 links por node, 65535 nodes/links e 1024 navi nodes por área.
+
+Se uma área não tem arquivo nenhum, criar um node ali começa a área do zero (nada é
+sobrescrito: o `nodesN.dat` só nasce quando você salvar).
 
 O mod nunca reordena nem renomeia área/node/link por conta própria: ao criar/apagar um
 node, os `NodeID`, os `linkID`, os links que apontavam para ele e os navi nodes

@@ -1050,6 +1050,17 @@ function M:draw_area_tab()
 	self:text(T('nav.areas_carregadas') .. ' (%d)', #loaded)
 	if self:button(T('nav.carregar')) then app:loadAroundPlayer() end
 	self:sameLine()
+	if self:button(T('area.criar_vazia')) then
+		local px, py = app:playerPosition()
+		if px then
+			local ok, err = app:newArea(geo.areaFromCoords(px, py))
+			if not ok then app:setStatus(tostring(err), 'warn') end
+		else
+			app:setStatus(T('misc.sem_area'), 'warn')
+		end
+	end
+	self:textDim(T('area.criar_vazia_dica'))
+	self:sameLine()
 	if self:button(T('act.recarregar')) then
 		local ok, err = app:reload()
 		if not ok then app:setStatus(err, 'warn') end
