@@ -684,6 +684,28 @@ t.describe('app - interface', function()
 		t.near(mock.playerPos.y, -1684, 0.001)
 	end)
 
+	t.test('trocar a cor no painel so aceita hexadecimal valido', function()
+		local A = liveApp({ withUi = true })
+		A.ui.tab = 'config'
+		A:toggleMenu()
+		local label = i18n.t('cfg.cor_veh')
+
+		-- valor invalido: volta para a cor atual e avisa
+		mock.clearUiLog()
+		mock.runUiFrame()
+		mock.typeText(label, 'azul')
+		mock.runUiFrame()
+		t.eq(A.settings.render.cor_veh, '#FFFFFF', 'cor invalida nao entra')
+		t.contains(tostring(A.status), 'invalida', 'avisou o jogador')
+
+		-- valor valido: entra na configuracao e no desenho
+		mock.clearUiLog()
+		mock.typeText(label, '#ff0000')
+		mock.runUiFrame()
+		t.eq(A.settings.render.cor_veh, '#FF0000')
+		t.eq(A.render.colors.veh, util.argb(255, 255, 0, 0), 'o render usa a cor nova')
+	end)
+
 	t.test('menu fechado nao desenha e nao captura o mouse', function()
 		local A = liveApp({ withUi = true })
 		A.ui:setVisible(false)

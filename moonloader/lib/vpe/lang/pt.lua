@@ -477,6 +477,7 @@ return {
 ['cfg.mostrar_hud'] = 'Mostrar HUD',
 ['cfg.altura_nodes'] = 'Altura do desenho dos nodes',
 ['cfg.tamanho_node'] = 'Tamanho do node na tela',
+['cfg.cor_invalida'] = 'Cor invalida: use #RRGGBB (mantive %s).',
 ['cfg.cores'] = 'Cores',
 ['cfg.cor_veh'] = 'Node de veiculo',
 ['cfg.cor_ped'] = 'Node de pedestre',

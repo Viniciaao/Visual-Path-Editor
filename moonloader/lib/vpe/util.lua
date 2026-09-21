@@ -169,6 +169,15 @@ function M.toArgb(color, fallback)
 	return fallback or 0xFFFFFFFF
 end
 
+--- Valida uma cor em texto ("#RRGGBB" ou "#AARRGGBB") e devolve o texto
+--- normalizado, ou nil quando nao e uma cor valida.
+function M.parseHexColor(text)
+	local hex = tostring(text or ''):gsub('^%s*#?', ''):gsub('%s*$', '')
+	if #hex ~= 6 and #hex ~= 8 then return nil end
+	if not hex:match('^%x+$') then return nil end
+	return '#' .. hex:upper()
+end
+
 --- Separa ARGB em componentes.
 function M.splitArgb(color)
 	local a = bit.rshift(bit.band(color, 0xFF000000), 24)

@@ -478,6 +478,7 @@ return {
 ['cfg.mostrar_hud'] = 'Show HUD',
 ['cfg.altura_nodes'] = 'Node drawing height',
 ['cfg.tamanho_node'] = 'Node size on screen',
+['cfg.cor_invalida'] = 'Invalid color: use #RRGGBB (kept %s).',
 ['cfg.cores'] = 'Colours',
 ['cfg.cor_veh'] = 'Vehicle node',
 ['cfg.cor_ped'] = 'Ped node',

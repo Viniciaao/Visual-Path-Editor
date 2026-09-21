@@ -326,6 +326,12 @@ function M:inputFloat(label, ref, step)
 	return self:call('InputFloat', label, ref.native, step or 0.5, 2) == true
 end
 
+--- Campo de texto (ImBuffer). Devolve true quando o usuario mudou o conteudo.
+function M:inputText(label, ref, flags)
+	if not ref then return false end
+	return self:call('InputText', label, ref.native, flags) == true
+end
+
 function M:sliderInt(label, ref, min, max)
 	if not ref then return false end
 	return self:call('SliderInt', label, ref.native, min, max) == true
@@ -1288,9 +1294,28 @@ function M:draw_config_tab()
 		local tChanged, tamanho = self:labeledSlider(T('cfg.tamanho_node'), 'float', 'cfg_tamanho', settings.render.tamanho_node, 2, 24, 0.5)
 		if tChanged then settings.render.tamanho_node = tamanho end
 		self:textDim(T('cfg.cores'))
+		-- cor editavel: campo de texto "#RRGGBB" (o valor so entra se for valido)
 		local function colorBinding(label, key, field)
-			local current = settings.render[field] or '#FFFFFF'
-			self:text('%s: %s', label, tostring(current))
+			local current = tostring(settings.render[field] or '#FFFFFF')
+			local buffer = self:ref('buffer', key, 16)
+			if not buffer then
+				self:text('%s: %s', label, current)
+				return
+			end
+			buffer:set(current)
+			self:sameLine()
+			if self:inputText(label, buffer) then
+				local color = util.parseHexColor(buffer:get())
+				if color then
+					settings.render[field] = color
+					app:applySettings()
+					config.save(settings)
+				else
+					buffer:set(current)
+					app:setStatus(T('cfg.cor_invalida', current), 'warn')
+				end
+			end
+			if util.parseHexColor(buffer:get()) == nil then buffer:set(current) end
 		end
 		colorBinding(T('cfg.cor_veh'), 'cfg_cor_veh', 'cor_veh')
 		colorBinding(T('cfg.cor_ped'), 'cfg_cor_ped', 'cor_ped')

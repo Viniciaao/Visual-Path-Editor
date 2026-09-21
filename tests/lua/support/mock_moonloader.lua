@@ -154,6 +154,7 @@ M.imguiCalls = {}
 M.imguiPress = {}
 M.imguiOpen = {}
 M.imguiModal = nil
+M.imguiInput = {}
 
 function M.resetImgui()
 	M.imguiCalls = {}
@@ -169,6 +170,7 @@ function M.clearUiLog()
 	M.imguiPress = {}
 	M.imguiOpen = {}
 	M.imguiModal = nil
+	M.imguiInput = {}
 	M.uiStack = {}
 end
 
@@ -185,6 +187,11 @@ function M.unbalanced()
 	end
 	table.sort(out)
 	return out
+end
+
+--- Digita um texto no proximo campo InputText com esse rotulo.
+function M.typeText(label, text)
+	M.imguiInput[tostring(label)] = tostring(text)
 end
 
 --- Marca um botao/selectable como clicado no proximo quadro.
@@ -327,6 +334,16 @@ function M.installImgui()
 		return pressed(tostring(label))
 	end
 	imgui.Checkbox = function(label, ref) record('Checkbox', tostring(label)) return false end
+	imgui.InputText = function(label, ref, flags)
+		record('InputText', tostring(label))
+		local wanted = M.imguiInput[tostring(label)]
+		if wanted ~= nil then
+			M.imguiInput[tostring(label)] = nil
+			pcall(function() ref.v = wanted end)
+			return true
+		end
+		return false
+	end
 	imgui.InputInt = function(label, ref) record('InputInt', tostring(label)) return false end
 	imgui.InputFloat = function(label, ref) record('InputFloat', tostring(label)) return false end
 	imgui.SliderInt = function(label, ref) record('SliderInt', tostring(label)) return false end
