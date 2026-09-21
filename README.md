@@ -1,2 +1,2 @@
-# D-D-DDID
-Script Cleo for GTA SA
+# Visual Path Editor (LUA)
+Inspirado no Visual Path Editor 1.0 de Lightvelox
