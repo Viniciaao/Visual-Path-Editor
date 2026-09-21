@@ -1,6 +1,20 @@
 local t = require 'support.assert'
 local util = require 'vpe.util'
 
+t.describe('util - cores', function()
+	t.test('fadeArgb mexe so no alfa', function()
+		local cor = util.argb(255, 255, 0, 0)
+		t.eq(util.fadeArgb(cor, 1.0), cor, 'fator 1 nao muda nada')
+		t.eq(util.fadeArgb(cor, 0.5), util.argb(128, 255, 0, 0), 'metade do alfa')
+		t.eq(util.fadeArgb(cor, 0), util.argb(0, 255, 0, 0))
+		t.eq(util.fadeArgb(cor, 2.0), cor, 'fator > 1 e limitado')
+		t.eq(util.fadeArgb(cor, -1), util.argb(0, 255, 0, 0))
+		local meia = util.argb(128, 12, 34, 56)
+		t.eq(util.fadeArgb(meia, 0.5), util.argb(64, 12, 34, 56), 'mantem o RGB')
+		t.eq(util.fadeArgb('nada', 0.5), 'nada', 'valor invalido volta igual')
+	end)
+end)
+
 t.describe('util - bits', function()
 	t.test('liga, desliga e consulta bits', function()
 		local v = 0

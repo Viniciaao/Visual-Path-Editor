@@ -500,6 +500,17 @@ function M:pixelsPerMeter(x, y, z)
 	return scale
 end
 
+--- Fator de alfa conforme a distancia (1 = perto, 0.45 = no limite do alcance).
+function M:distanceFade(distance, conf)
+	if conf.fade_distancia == false then return 1.0 end
+	local limit = conf.distancia or 150.0
+	if not finite(distance) or limit <= 0 then return 1.0 end
+	local factor = 1.05 - (distance / limit) * 0.6
+	if factor < 0.45 then factor = 0.45 end
+	if factor > 1.0 then factor = 1.0 end
+	return factor
+end
+
 --- Raio do marcador na tela: tamanho no mundo (metros) x pixels por metro.
 function M:nodeRadius(node, conf)
 	local size = conf.tamanho_node or 6.0
@@ -569,8 +580,8 @@ function M:drawLinks()
 											blocked = blocked + 1
 										end
 										if x2 then
-											local color = self.colors.link
-											if kind == 'ped' then color = self.colors.linkPed end
+											local color = util.fadeArgb(self.colors.link, self:distanceFade(distance, conf))
+											if kind == 'ped' then color = util.fadeArgb(self.colors.linkPed, self:distanceFade(distance, conf)) end
 											local sel = project.selection
 											if (sel.area == areaId and sel.node == i) or (sel.area == link.area and sel.node == link.node + 1) then
 												color = self.colors.linkSelected
@@ -626,6 +637,7 @@ function M:drawNodes()
 					end
 					if sx then
 						local color = self:nodeColor(areaId, i, node, kind)
+						color = util.fadeArgb(color, self:distanceFade(distance, conf))
 						local radius = self:nodeRadius(node, conf)
 						local selected = project.selection.area == areaId and project.selection.node == i
 						if selected then radius = radius * 1.6 end
@@ -672,7 +684,7 @@ function M:drawNavis()
 						blocked = blocked + 1
 					end
 					if sx then
-						local color = self.colors.navi
+						local color = util.fadeArgb(self.colors.navi, self:distanceFade(distance, conf))
 						local naviRadius = self:nodeRadius(navi, conf) * 0.8
 						local sel = project.selection.area == areaId and project.selection.navi == i
 						if sel then color = self.colors.selected end

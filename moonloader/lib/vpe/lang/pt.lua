@@ -687,4 +687,5 @@ return {
 	['cfg.diagnostico'] = 'Diagnostico do desenho (F10)',
 	['cfg.diagnostico_dica'] = 'desenha marcas de referencia e grava os numeros da projecao no log',
 	['cfg.largura_link'] = 'Espessura das linhas dos links (largura_link)',
+	['cfg.fade_distancia'] = 'Nodes longe ficam mais fracos (fade_distancia)',
 }

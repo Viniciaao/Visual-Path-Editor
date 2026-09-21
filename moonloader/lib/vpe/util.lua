@@ -169,6 +169,19 @@ function M.toArgb(color, fallback)
 	return fallback or 0xFFFFFFFF
 end
 
+--- Escurece/desbota a cor mexendo so no alfa (0xAARRGGBB).
+--- Usado para o node ficar mais fraco conforme se afasta (sensacao de distancia).
+function M.fadeArgb(color, factor)
+	if type(color) ~= 'number' then return color end
+	factor = tonumber(factor) or 1.0
+	if factor < 0 then factor = 0 elseif factor > 1 then factor = 1 end
+	local alpha = math.floor(color / 0x1000000)
+	local rgb = color - alpha * 0x1000000
+	alpha = math.floor(alpha * factor + 0.5)
+	if alpha < 0 then alpha = 0 elseif alpha > 255 then alpha = 255 end
+	return alpha * 0x1000000 + rgb
+end
+
 --- Valida uma cor em texto ("#RRGGBB" ou "#AARRGGBB") e devolve o texto
 --- normalizado, ou nil quando nao e uma cor valida.
 function M.parseHexColor(text)

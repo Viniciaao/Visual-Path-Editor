@@ -164,6 +164,8 @@ O mod desenha cada quadro, projetando as coordenadas do mundo para a tela:
   projeção no espaço relativo (640x448) e o desenho em pixels da janela, troque para
   `jogo`. **Use o F10 para conferir**: as marcas de canto/centro têm que cair
   exatamente nos cantos/centro da tela.
+* **Fade por distância** (`fade_distancia`): nodes/links distantes ficam mais fracos,
+  o que reforça a sensação de profundidade.
 * **Diagnóstico** (`geral.log_api`): grava a fase do desenho a cada quadro; o F10
   grava também os números da projeção (tela, jogador, câmera, pixels por metro).
 

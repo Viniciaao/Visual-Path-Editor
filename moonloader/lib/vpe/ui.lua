@@ -1340,6 +1340,8 @@ function M:draw_config_tab()
 		if dlChanged then settings.render.distancia_links = distLinks end
 		local lwChanged, larguraLink = self:labeledSlider(T('cfg.largura_link'), 'float', 'cfg_larglink', settings.render.largura_link or 1.0, 0.5, 6, 0.5)
 		if lwChanged then settings.render.largura_link = larguraLink end
+		self:checkboxBinding(T('cfg.fade_distancia'), 'bool', 'cfg_fadedist', settings.render.fade_distancia ~= false,
+			function(v) settings.render.fade_distancia = v end)
 		self:checkboxBinding(T('cfg.oclusao'), 'bool', 'cfg_oclusao', settings.render.oclusao ~= false,
 			function(v) settings.render.oclusao = v end)
 		local orChanged, raioOclusao = self:labeledSlider(T('cfg.oclusao_raio'), 'float', 'cfg_oclurad', settings.render.oclusao_raio or 120, 0, 500, 10)

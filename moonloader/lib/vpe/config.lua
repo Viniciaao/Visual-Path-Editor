@@ -35,10 +35,12 @@ M.defaults = {
 		-- links (linhas) so entre nodes perto (area cheia virava emaranhado)
 		distancia_links = 150.0,
 		largura_link = 1.0,
+		-- nodes/links longe ficam mais fracos (ajuda a enxergar profundidade)
+		fade_distancia = true,
 		-- oclusao: nao desenhar node atras de predio/parede (raycast)
 		oclusao = true,
-		oclusao_raio = 120.0,
-		oclusao_max_por_quadro = 40,
+		oclusao_raio = 150.0,
+		oclusao_max_por_quadro = 60,
 		-- tamanho do marcador acompanha a distancia (perspectiva de verdade)
 		escala_por_distancia = true,
 		tamanho_mundo = 2.5,

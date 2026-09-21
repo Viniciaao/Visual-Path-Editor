@@ -688,4 +688,5 @@ return {
 	['cfg.diagnostico'] = 'Draw diagnostics (F10)',
 	['cfg.diagnostico_dica'] = 'draws reference marks and logs the projection numbers',
 	['cfg.largura_link'] = 'Link line thickness (largura_link)',
+	['cfg.fade_distancia'] = 'Distant nodes fade out (fade_distancia)',
 }

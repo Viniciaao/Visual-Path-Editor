@@ -28,7 +28,7 @@ local M = {}
 
 local T = i18n.t
 
-M.VERSION = '1.0.2'
+M.VERSION = '1.0.3'
 M.AREA_COUNT = 64
 
 M.VK_CONTROL = 0x11
