@@ -376,8 +376,17 @@ local function drawCircle(x, y, radius, color, sides, usePolygon)
 	return drawBox(x - radius, y - radius, radius * 2, radius * 2, color)
 end
 
+--- Cruz: marcador leve, usado nos navi nodes e no destaque do node escolhido.
+local function drawCross(x, y, radius, color, width)
+	if not finite(radius) or radius <= 0 then return false end
+	local okA = drawLine(x - radius, y, x + radius, y, width or 1.0, color)
+	local okB = drawLine(x, y - radius, x, y + radius, width or 1.0, color)
+	return okA or okB
+end
+
 M.drawLine = drawLine
 M.drawCircle = drawCircle
+M.drawCross = drawCross
 
 --------------------------------------------------------------------------------
 -- Diagnostico (tecla F10: ajuda a achar problema de projecao/coordenadas)
@@ -505,29 +514,50 @@ function M:distanceFade(distance, conf)
 	if conf.fade_distancia == false then return 1.0 end
 	local limit = conf.distancia or 150.0
 	if not finite(distance) or limit <= 0 then return 1.0 end
-	local factor = 1.05 - (distance / limit) * 0.6
-	if factor < 0.45 then factor = 0.45 end
+	local factor = 1.05 - (distance / limit) * 0.75
+	if factor < 0.35 then factor = 0.35 end
 	if factor > 1.0 then factor = 1.0 end
 	return factor
 end
 
 --- Raio do marcador na tela: tamanho no mundo (metros) x pixels por metro.
 function M:nodeRadius(node, conf)
-	local size = conf.tamanho_node or 6.0
+	local size = conf.tamanho_node or 4.0
 	if conf.escala_por_distancia == false then return size end
 	local ppm = self:pixelsPerMeter(node.x, node.y, node.z or 0)
 	if not ppm then return size end
-	local radius = (conf.tamanho_mundo or 2.5) * 0.5 * ppm
+	local radius = (conf.tamanho_mundo or 1.2) * 0.5 * ppm
 	if not finite(radius) then return size end
-	if radius < 1.5 then radius = 1.5 end
-	if radius > 30 then radius = 30 end
+	-- marcador de editor: pequeno e discreto (antes ia ate 30 px e a tela
+	-- ficava cheia de blocos gigantes)
+	local minSize = tonumber(conf.tamanho_minimo) or 1.5
+	local maxSize = tonumber(conf.tamanho_maximo) or 6.0
+	if radius < minSize then radius = minSize end
+	if radius > maxSize then radius = maxSize end
 	return radius
 end
 
 --- Desenha os links de todos os nodes carregados.
+--- O node esta em foco (selecionado ou sob o mouse)?
+local function isFocus(project, areaId, index)
+	local sel = project.selection
+	if sel.area == areaId and sel.node == index then return true end
+	local hov = project.hovered
+	if hov.area == areaId and hov.node == index then return true end
+	return false
+end
+
+M.isFocus = isFocus
+
 function M:drawLinks()
 	local conf = self.settings.render or {}
 	if conf.mostrar_links == false then return 0 end
+	-- 'selecionado' (padrao): so as ligacoes do node escolhido/sob o mouse.
+	-- Desenhar as ligacoes de TODOS os nodes virava uma teia ilegivel em cima
+	-- da cidade (era o principal motivo de a tela parecer "grudada").
+	local modo = conf.links_modo or 'selecionado'
+	if modo == 'nenhum' then return 0 end
+	local onlyFocus = (modo ~= 'todos')
 	local project = self.project
 	local playerX, playerY = self:playerPos()
 	local budget = self:budget()
@@ -550,7 +580,8 @@ function M:drawLinks()
 				local node = area.nodes[i]
 				local kind = dat.nodeType(area, i)
 				local distance = geo.distance2d(playerX, playerY, node.x, node.y)
-				if self:shouldDrawNode(areaId, i, node, kind, distance, conf) then
+				if self:shouldDrawNode(areaId, i, node, kind, distance, conf)
+					and (not onlyFocus or isFocus(project, areaId, i)) then
 					projects = projects + 1
 					local x1, y1
 					if self:isVisible(node.x, node.y, node.z or 0) then
@@ -640,10 +671,17 @@ function M:drawNodes()
 						color = util.fadeArgb(color, self:distanceFade(distance, conf))
 						local radius = self:nodeRadius(node, conf)
 						local selected = project.selection.area == areaId and project.selection.node == i
-						if selected then radius = radius * 1.6 end
+						local hovered = project.hovered.area == areaId and project.hovered.node == i
+						-- node escolhido: marcador maior + cruz (fica facil de achar
+						-- no meio de centenas de pontos)
+						if selected then radius = radius * 1.8
+						elseif hovered then radius = radius * 1.4 end
 						local sides = (kind == 'ped') and 3 or 4
 						if drawCircle(sx, sy, radius, color, sides, conf.usar_poligonos) then
 							drawn = drawn + 1
+						end
+						if selected or hovered then
+							drawCross(sx, sy, radius + 4, color, selected and 2.0 or 1.0)
 						end
 					end
 				end
@@ -662,8 +700,8 @@ function M:drawNavis()
 	if conf.mostrar_navis == false then return 0 end
 	local project = self.project
 	local playerX, playerY = self:playerPos()
-	local size = (conf.tamanho_node or 6.0) * 0.8
 	local maxNavis = self:budget().navis
+	local naviRange = conf.distancia_navis or conf.distancia or 60.0
 	local drawn = 0
 	local blocked = 0
 
@@ -676,7 +714,7 @@ function M:drawNavis()
 				else
 				local navi = area.navis[i]
 				local distance = geo.distance2d(playerX, playerY, navi.x, navi.y)
-				if distance <= (conf.distancia or 250.0) then
+				if distance <= naviRange then
 					local sx, sy
 					if self:isVisible(navi.x, navi.y, navi.z or 0) then
 						sx, sy = self:projectNode(navi, (conf.altura_nodes or 1.0) + 0.5)
@@ -685,10 +723,12 @@ function M:drawNavis()
 					end
 					if sx then
 						local color = util.fadeArgb(self.colors.navi, self:distanceFade(distance, conf))
-						local naviRadius = self:nodeRadius(navi, conf) * 0.8
+						local naviRadius = self:nodeRadius(navi, conf) * 0.9
 						local sel = project.selection.area == areaId and project.selection.navi == i
 						if sel then color = self.colors.selected end
-						if drawCircle(sx, sy, naviRadius, color, nil, conf.usar_poligonos) then
+						-- navi node = cruz (fica distinto do quadrado dos nodes e
+						-- nao cobre o desenho debaixo)
+						if drawCross(sx, sy, naviRadius, color, sel and 2.0 or 1.0) then
 							drawn = drawn + 1
 						end
 						-- direcao

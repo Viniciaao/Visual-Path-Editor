@@ -28,7 +28,7 @@ local M = {}
 
 local T = i18n.t
 
-M.VERSION = '1.0.3'
+M.VERSION = '1.0.4'
 M.AREA_COUNT = 64
 
 M.VK_CONTROL = 0x11
@@ -1260,6 +1260,39 @@ function M:toggleRender()
 	self:setStatus((conf.ativo and T('ui.enabled') or T('ui.disabled')) .. ': ' .. T('ui.visualizar'), 'info')
 	self:warnRenderState()
 	return conf.ativo
+end
+
+--- Presets de desenho: 'limpo' (padrao, para editar) e 'completo' (para ver a
+--- rede toda). O primeiro deixa a tela legivel, o segundo mostra tudo.
+M.RENDER_PRESETS = {
+	limpo = {
+		distancia = 120.0, distancia_navis = 60.0, distancia_links = 120.0,
+		max_nodes = 250, max_navis = 80, max_linhas = 400,
+		links_modo = 'selecionado', escala_por_distancia = true,
+		tamanho_mundo = 1.2, tamanho_minimo = 1.5, tamanho_maximo = 6.0,
+		fade_distancia = true, oclusao = true, mostrar_hud = true,
+	},
+	completo = {
+		distancia = 400.0, distancia_navis = 200.0, distancia_links = 400.0,
+		max_nodes = 1500, max_navis = 500, max_linhas = 3000,
+		links_modo = 'todos', escala_por_distancia = false,
+		tamanho_node = 4.0, fade_distancia = false, oclusao = false,
+		mostrar_hud = true,
+	},
+}
+
+--- Aplica um preset de desenho e salva a configuracao.
+function M:applyRenderPreset(name)
+	local preset = M.RENDER_PRESETS[name]
+	if not preset then return false end
+	for key, value in pairs(preset) do
+		self.settings.render[key] = value
+	end
+	self:applySettings()
+	if self.log then log.info('preset de desenho aplicado: %s', tostring(name)) end
+	self:setStatus(T(name == 'completo' and 'cfg.preset_completo_ok' or 'cfg.preset_limpo_ok'), 'info')
+	if config and config.save then config.save(self.settings) end
+	return true
 end
 
 --- Liga/desliga as marcas de diagnostico do desenho (F10) e grava os numeros

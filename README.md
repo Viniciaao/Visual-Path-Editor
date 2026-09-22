@@ -149,6 +149,10 @@ com índice velho).
 
 O mod desenha cada quadro, projetando as coordenadas do mundo para a tela:
 
+* **Marcadores pequenos e discretos**: um node é um quadradinho de 3–12 px
+  (`tamanho_mundo` = 1,2 m, limitado por `tamanho_minimo`/`tamanho_maximo`). O navi
+  node é uma **cruz** (fica distinto dos nodes e não cobre o chão) e o node
+  selecionado/sob o mouse ganha **cruz de destaque**.
 * **Tamanho por distância** (`escala_por_distancia`, `tamanho_mundo`): o marcador tem
   um tamanho *em metros* e encolhe com a distância — é o que faz o desenho parecer
   parte do mundo em vez de uma camada colada na tela. Desligue para voltar ao
@@ -157,9 +161,17 @@ O mod desenha cada quadro, projetando as coordenadas do mundo para a tela:
   câmera até o node (`isLineOfSightClear`) e **não desenha o que está atrás de
   prédio/parede**. O resultado fica em cache por 0,25 s e há um teto de raycasts por
   quadro para não pesar.
-* **Limites** (`distancia`, `distancia_links`, `max_nodes`, `max_navis`, `max_linhas`,
-  `largura_link`): em área cheia, milhares de nodes viram um emaranhado — estes
-  controles deixam o desenho limpo.
+* **Links só do node escolhido** (`links_modo` = `selecionado` | `todos` | `nenhum`):
+  o padrão desenha **apenas as ligações do node selecionado (ou sob o mouse)**. Antes,
+  desenhar as ligações de todos os nodes fazia uma teia de linhas sobre a cidade —
+  era o que deixava a tela ilegível. Use `todos` quando quiser ver a rede inteira.
+* **Limites** (`distancia`, `distancia_navis`, `distancia_links`, `max_nodes`,
+  `max_navis`, `max_linhas`, `largura_link`): em avenida cheia, centenas de marcadores
+  viram confusão — os padrões são 120 m de alcance, 60 m para navi nodes e 250/80
+  marcadores, o suficiente para editar sem poluir.
+* **Dois presets** (aba *Configurações* → *Render*): **Desenho limpo** (padrão, para
+  editar) e **Ver rede completa** (tudo visível: 400 m, todas as linhas, sem oclusão —
+  mais pesado).
 * **Espaço de coordenadas** (`espaco`): `pixels` é o normal. Se o seu jogo usa a
   projeção no espaço relativo (640x448) e o desenho em pixels da janela, troque para
   `jogo`. **Use o F10 para conferir**: as marcas de canto/centro têm que cair
@@ -263,7 +275,8 @@ ambiente, round-trip das áreas carregadas e validação, e escreve o resultado 
 | Travamento/crash e preciso saber onde | Ligue `Diagnostico no log (log_api)`: o log passa a gravar, a cada quadro, a fase do desenho (`links`, `nodes`, `navis`, `hud`, `minimapa`). A última linha antes do travamento diz em qual fase foi |
 | Nodes "colados na tela", não no mapa | Ligue o **F10** (diagnóstico): ele desenha um quadrado vermelho no canto superior esquerdo, uma cruz verde no centro e um quadrado azul no canto inferior direito, além de marcas **no mundo** (amarelo no jogador, magenta 20 m ao norte, ciano 20 m a leste). Me diga onde as marcas caíram e o log mostra os números crus |
 | Desenho atravessa paredes | Aba *Configurações* → **Ocultar nodes atrás de paredes/predios (oclusão)** já vem ligado; aumente `oclusao_raio` para checar mais longe ou reduza `oclusao_max_por_quadro` se o FPS cair |
-| Quadrados/linhas demais na tela | Reduza `distancia` (150 m por padrão), `distancia_links` e `max_nodes`; ligue **Tamanho do node acompanha a distancia** para os marcadores ficarem menores ao longe |
+| Muitos quadrados/linhas, tela confusa | Aba *Configurações* → *Render* → botão **Desenho limpo** (padrão da 1.0.4). Se ainda quiser menos: reduza `distancia`, `distancia_navis`, `max_nodes` e deixe **Linhas dos links** em *Só do node selecionado* |
+| Quero ver a rede inteira (todas as ligações) | Botão **Ver rede completa**, ou mude **Linhas dos links** para *Todas* e aumente `distancia` |
 | Crash ao desenhar | O desenho passa por checagens (`exigir_jogo_pronto`, validade das coordenadas, tetos por quadro) e nunca entrega handle/fonte inválidos à API do MoonLoader — veja *Nota de correção* abaixo |
 
 ### Nota de correção (crash 0xC0000005)
@@ -321,6 +334,10 @@ Good to know:
 * Draw budgets (`max_linhas`, `max_nodes`, `max_navis`) plus an automatic light mode
   keep the frame time in check; set `log_api = true` to log the draw phase of every
   frame (the last line before a freeze tells you where it happened).
+* **Clean by default (1.0.4)**: small markers (3-12 px), navi nodes as crosses, and
+  **only the selected node's links** are drawn - drawing every link of every node
+  turned the city into a web of lines. *Link lines* can be set to *All* and the
+  *Show full network* preset brings everything back (400 m range, no occlusion).
 * Nodes are drawn with a **world size** (they shrink with distance) and **occlusion**
   (a raycast hides what is behind buildings), so they look anchored in the map instead
   of a flat layer glued to the screen. Press **F10** to draw reference marks

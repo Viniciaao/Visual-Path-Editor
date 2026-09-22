@@ -24,7 +24,7 @@
 
 script_name('Visual Path Editor')
 script_author('Viniciaao')
-script_version('1.0.3')
+script_version('1.0.4')
 script_description('Editor visual dos path nodes (nodes*.dat) com validacao antes de salvar.')
 
 --------------------------------------------------------------------------------

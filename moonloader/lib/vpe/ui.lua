@@ -1300,6 +1300,11 @@ function M:draw_config_tab()
 	end
 
 	if self:collapsingHeader(T('cfg.render'), self:ref('bool', 'chk_cfg_render', false)) then
+		-- presets: jeito rapido de sair do "cheio de quadrados" ou de ver tudo
+		if self:button(T('cfg.preset_limpo')) then app:applyRenderPreset('limpo') end
+		self:sameLine()
+		if self:button(T('cfg.preset_completo')) then app:applyRenderPreset('completo') end
+		self:textDim(T('cfg.preset_dica'))
 		self:checkboxBinding(T('cfg.ativo'), 'bool', 'cfg_ativo2', settings.render.ativo ~= false, function(v) settings.render.ativo = v end)
 		local dChanged, distance = self:labeledSlider(T('cfg.distancia'), 'float', 'cfg_dist2', settings.render.distancia, 25, 1500, 1)
 		if dChanged then settings.render.distancia = distance end
@@ -1309,6 +1314,15 @@ function M:draw_config_tab()
 		if aChanged then settings.render.altura_nodes = altura end
 		local tChanged, tamanho = self:labeledSlider(T('cfg.tamanho_node'), 'float', 'cfg_tamanho', settings.render.tamanho_node, 2, 24, 0.5)
 		if tChanged then settings.render.tamanho_node = tamanho end
+		-- links: por padrao so os do node escolhido (evita a teia de linhas)
+		local modos = { T('cfg.links_sel'), T('cfg.links_todos'), T('cfg.links_nenhum') }
+		local modoAtual = (settings.render.links_modo == 'todos' and 2)
+			or (settings.render.links_modo == 'nenhum' and 3) or 1
+		local modoRef = self:syncRef('int', 'cfg_linksmodo', modoAtual)
+		local modoChanged, modoIndex = self:combo(T('cfg.links_modo'), modoRef, modos)
+		if modoChanged then
+			settings.render.links_modo = (modoIndex == 2 and 'todos') or (modoIndex == 3 and 'nenhum') or 'selecionado'
+		end
 		-- limites de desenho: se algo der errado no jogo, e aqui que se corta
 		self:textDim(T('cfg.render_limites'))
 		local render = app.render
@@ -1336,7 +1350,11 @@ function M:draw_config_tab()
 			function(v) settings.render.escala_por_distancia = v end)
 		local tmChanged, tamanhoMundo = self:labeledSlider(T('cfg.tamanho_mundo'), 'float', 'cfg_tammundo', settings.render.tamanho_mundo or 2.5, 0.5, 20, 0.5)
 		if tmChanged then settings.render.tamanho_mundo = tamanhoMundo end
-		local dlChanged, distLinks = self:labeledSlider(T('cfg.distancia_links'), 'float', 'cfg_distlinks', settings.render.distancia_links or 150, 10, 1000, 10)
+		local dnChanged, distNavis = self:labeledSlider(T('cfg.distancia_navis'), 'float', 'cfg_distnavis', settings.render.distancia_navis or 60, 10, 500, 10)
+		if dnChanged then settings.render.distancia_navis = distNavis end
+		local tmaxChanged, tamanhoMax = self:labeledSlider(T('cfg.tamanho_maximo'), 'float', 'cfg_tammax', settings.render.tamanho_maximo or 6, 1, 20, 0.5)
+		if tmaxChanged then settings.render.tamanho_maximo = tamanhoMax end
+		local dlChanged, distLinks = self:labeledSlider(T('cfg.distancia_links'), 'float', 'cfg_distlinks', settings.render.distancia_links or 120, 10, 1000, 10)
 		if dlChanged then settings.render.distancia_links = distLinks end
 		local lwChanged, larguraLink = self:labeledSlider(T('cfg.largura_link'), 'float', 'cfg_larglink', settings.render.largura_link or 1.0, 0.5, 6, 0.5)
 		if lwChanged then settings.render.largura_link = larguraLink end

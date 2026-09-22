@@ -26,14 +26,18 @@ M.defaults = {
 		-- desenhar so com o jogador no mundo (fora do carregamento/pausa)
 		exigir_jogo_pronto = true,
 		-- teto de primitivas por quadro (protege o jogo e o FPS)
-		max_linhas = 900,
-		max_nodes = 400,
-		max_navis = 200,
+		max_linhas = 400,
+		max_nodes = 250,
+		max_navis = 80,
 		usar_poligonos = false,
 		modo_leve = true,
-		distancia = 150.0,
-		-- links (linhas) so entre nodes perto (area cheia virava emaranhado)
-		distancia_links = 150.0,
+		distancia = 120.0,
+		-- navi node so de perto (eles sao muitos e cobriam o desenho)
+		distancia_navis = 60.0,
+		-- links (linhas): 'selecionado' = so as ligacoes do node escolhido
+		-- (desenhar todas as ligacoes virava uma teia na tela)
+		links_modo = 'selecionado',
+		distancia_links = 120.0,
 		largura_link = 1.0,
 		-- nodes/links longe ficam mais fracos (ajuda a enxergar profundidade)
 		fade_distancia = true,
@@ -43,7 +47,10 @@ M.defaults = {
 		oclusao_max_por_quadro = 60,
 		-- tamanho do marcador acompanha a distancia (perspectiva de verdade)
 		escala_por_distancia = true,
-		tamanho_mundo = 2.5,
+		tamanho_mundo = 1.2,
+		-- limites do marcador na tela (pixels de raio)
+		tamanho_minimo = 1.5,
+		tamanho_maximo = 6.0,
 		-- espaco de coordenadas da api de desenho: 'pixels' ou 'jogo'
 		-- ('jogo' = converte com convertGameScreenCoordsToWindowScreenCoords)
 		espaco = 'pixels',
@@ -54,13 +61,13 @@ M.defaults = {
 		mostrar_barcos = true,
 		mostrar_hud = true,
 		altura_nodes = 1.0,
-		tamanho_node = 6.0,
-		cor_veh = '#E0FFFFFF',
-		cor_ped = '#E026E04D',
-		cor_boat = '#E03DA5FF',
-		cor_navi = '#E01BE4E4',
+		tamanho_node = 4.0,
+		cor_veh = '#B4FFFFFF',
+		cor_ped = '#B426E04D',
+		cor_boat = '#B43DA5FF',
+		cor_navi = '#B41BE4E4',
 		cor_selecionado = '#FFFFD200',
-		cor_link = '#708C8C8C',
+		cor_link = '#668C8C8C',
 		cor_hover = '#FFFF5A5A',
 	},
 	edicao = {
