@@ -346,6 +346,29 @@ t.describe('app - edicao', function()
 		t.ok(found, 'validacao apontou o link sem inverso')
 	end)
 
+	t.test('espelhamento desligado faz o link sair de mao unica', function()
+		local A = liveApp()
+		A.settings.edicao.espelhar_links = false
+		A.linkMode = 'auto' -- o modo pediria bidirecional, mas o espelho esta desligado
+		t.eq(A:linkIsOneWay(), true)
+		local beforeSrc = #A.project:node(15, 1).links
+		local beforeDst = #A.project:node(15, 3).links
+		A:selectNode(15, 1)
+		A:markLinkSource()
+		A:selectNode(15, 3)
+		t.ok(A:createLink())
+		t.eq(#A.project:node(15, 1).links, beforeSrc + 1, 'a origem ganhou o link')
+		t.eq(#A.project:node(15, 3).links, beforeDst, 'destino NAO ganhou o inverso')
+		-- com o espelhamento ligado volta a criar o inverso
+		A.settings.edicao.espelhar_links = true
+		t.eq(A:linkIsOneWay(), false)
+		A:selectNode(15, 1)
+		A:markLinkSource()
+		A:selectNode(15, 3)
+		t.ok(A:createLink())
+		t.eq(#A.project:node(15, 3).links, beforeDst + 1, 'inverso criado')
+	end)
+
 	t.test('apagar node pede confirmacao quando ele tem links', function()
 		local A = liveApp()
 		A:selectNode(15, 1)
@@ -706,6 +729,67 @@ t.describe('app - interface', function()
 		mock.runUiFrame()
 		t.eq(A.settings.render.cor_veh, '#FF0000')
 		t.eq(A.render.colors.veh, util.argb(255, 255, 0, 0), 'o render usa a cor nova')
+	end)
+
+	t.test('flags do navi vao para a palavra de flags (e para o arquivo)', function()
+		local dat = require 'vpe.dat'
+		local A = liveApp({ withUi = true })
+		local area = A.project:area(15)
+		local naviIndex = A.project:addNavi(15, 2497.5, -1684.0, 15, 2)
+		local navi = area.navis[naviIndex]
+		t.eq(dat.getNaviFlag(navi.flags, 'TRAFFIC_LIGHT'), 0)
+
+		A:selectNavi(15, naviIndex)
+		t.ok(A:setNaviField('trafficLight', 1), 'semaforo norte-sul')
+		t.ok(A:setNaviField('leftLanes', 3))
+		t.ok(A:setNaviField('rightLanes', 2))
+		t.ok(A:setNaviField('width', 9))
+		t.ok(A:setNaviField('trainCrossing', true))
+
+		t.eq(dat.getNaviFlag(navi.flags, 'TRAFFIC_LIGHT'), 1, 'semaforo gravado nos bits')
+		t.eq(dat.getNaviFlag(navi.flags, 'LEFT_LANES'), 3)
+		t.eq(dat.getNaviFlag(navi.flags, 'RIGHT_LANES'), 2)
+		t.eq(dat.getNaviFlag(navi.flags, 'WIDTH'), 9)
+		t.eq(dat.getNaviFlag(navi.flags, 'TRAIN_CROSSING'), 1)
+
+		-- ida e volta pelo arquivo
+		local bytes = dat.serialize(area)
+		local parsed = dat.parse(bytes)
+		t.eq(dat.getNaviFlag(parsed.navis[naviIndex].flags, 'TRAFFIC_LIGHT'), 1, 'chegou no arquivo')
+		t.eq(dat.getNaviFlag(parsed.navis[naviIndex].flags, 'LEFT_LANES'), 3)
+
+		-- desfazer volta os bits
+		t.ok(A:undo())
+		t.eq(dat.getNaviFlag(area.navis[naviIndex].flags, 'TRAIN_CROSSING'), 0, 'undo reverteu')
+	end)
+
+	t.test('reverter e restaurar backup pedem confirmacao', function()
+		local A = liveApp({ withUi = true })
+
+		-- reverter: so age depois do "sim"
+		local ok, reason = A:askRevert(15)
+		t.eq(ok, false)
+		t.eq(reason, 'confirmar')
+		t.eq(A.pendingConfirm.kind, 'revert')
+		t.eq(A.project:area(15) ~= nil, true, 'nada foi feito ainda')
+
+		A:cancelPending()
+		t.eq(A.pendingConfirm, nil, 'cancelar limpa o pedido')
+
+		A:askRevert(15)
+		A:confirmPending()
+		t.eq(A.project:area(15), nil, 'a area saiu da memoria depois do sim')
+		t.eq(fs.exists(OVERRIDE .. '/nodes15.dat'), false, 'o arquivo do modloader foi removido')
+		t.eq(A.sources:exists(15), false, 'a varredura foi atualizada (nao tenta ler arquivo que saiu)')
+
+		-- restaurar backup: escreve o backup de volta no lugar do arquivo removido
+		fs.writeAll(BACKUP .. '/nodes15.dat', FIXTURE)
+		A:askRestoreBackup(15)
+		t.eq(A.pendingConfirm.kind, 'restore')
+		t.ok(A:confirmPending(), 'restaurou com o sim')
+		t.eq(fs.readAll(OVERRIDE .. '/nodes15.dat'), FIXTURE, 'arquivo restaurado igual ao backup')
+		t.eq(A.sources:exists(15), true, 'a varredura enxerga o arquivo restaurado')
+		t.ok(A:loadArea(15), 'a area carrega de novo')
 	end)
 
 	t.test('presets de desenho: limpo x rede completa', function()

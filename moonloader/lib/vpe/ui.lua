@@ -592,6 +592,12 @@ function M:drawConfirm()
 	if pending.kind == 'save' then
 		self:text(T('val.avisos_continuar'))
 		self:text(T('val.resumo', pending.report.errors or 0, pending.report.warns or 0, pending.report.infos or 0, pending.report.fixable or 0))
+	elseif pending.kind == 'revert' then
+		self:text(T('area.perg_reverter', pending.area or -1))
+		self:textDim(T('area.reverter_dica'))
+	elseif pending.kind == 'restore' then
+		self:text(T('area.perg_restaurar', pending.area or -1))
+		self:textDim(T('area.reverter_dica'))
 	else
 		self:text(T('sel.perg_excluir'))
 		self:text(string.format('%s: %d', T('cr.links'), pending.links or 0))
@@ -898,9 +904,14 @@ function M:drawLinks(ref, area)
 	if self:button(T('cr.criar')) then app:createLink() end
 	self:sameLine()
 	if self:button(T('cr.remover_link')) then app:clearLinks() end
+	local espelha = app.settings.edicao.espelhar_links ~= false
+	if not espelha and app.linkMode ~= 'unico' then
+		app.linkMode = 'unico' -- espelhamento desligado nas configuracoes: sempre mao unica
+	end
 	local modeRef = self:syncRef('int', 'link_mode', app.linkMode == 'unico' and 1 or 0)
 	local changed, index = self:combo(T('cr.link'), modeRef, { T('cr.link_bidirecional'), T('cr.link_sentido_unico') })
 	if changed then app.linkMode = (index == 2) and 'unico' or 'auto' end
+	if not espelha then self:textDim(T('cr.espelho_desligado')) end
 end
 
 function M:drawWorldButtons()
@@ -1110,7 +1121,11 @@ function M:draw_area_tab()
 			if self:button(T('act.salvar') .. '##area' .. id) then app:saveArea(id, {}) end
 			self:sameLine()
 			if self:button(T('sel.descartar') .. '##area' .. id) then app:unloadArea(id, false) end
+			-- desfazer o que o mod gravou (tira o override do ModLoader / volta o backup)
+			if self:button(T('area.reverter') .. '##area' .. id) then app:askRevert(id) end
 			self:sameLine()
+			if self:button(T('area.restaurar_backup') .. '##area' .. id) then app:askRestoreBackup(id) end
+			self:textDim(T('area.reverter_dica'))
 			if self:button(T('sel.exportar') .. '##area' .. id) then
 				local bytes = dat.serialize(area)
 				if bytes then
@@ -1199,7 +1214,7 @@ function M:draw_salvar_tab()
 	self:sameLine()
 	if self:button(T('val.salvar_mesmo')) then app:save({ force = true, confirmed = true }) end
 	self:sameLine()
-	if self:button(T('cfg.limpar_cache_modloader')) then app:clearModloaderCache() end
+	if self:button(T('ui.limpar_cache')) then app:clearModloaderCache() end
 	self:sameLine()
 	if self:button(T('ui.config')) then self.tab = 'config' end
 

@@ -595,6 +595,8 @@ return {
 ['log.limpar'] = 'Limpar',
 ['log.copiar'] = 'Copiar',
 ['log.aba_alteracoes'] = 'Alteracoes',
+	['ui.limpar_cache'] = "Limpar cache do ModLoader",
+	['cr.espelho_desligado'] = "Espelhamento desligado nas configuracoes: os links saem de mao unica.",
 ['log.aba_erros'] = 'Erros',
 ['log.alteracoes'] = 'Historico de alteracoes',
 ['log.sem_alteracoes'] = 'Nenhuma alteracao.',
@@ -699,4 +701,9 @@ return {
 	['cfg.preset_dica'] = 'limpo = poucos marcadores e so os links do node escolhido; completo = tudo visivel (mais pesado)',
 	['cfg.preset_limpo_ok'] = 'Desenho limpo aplicado',
 	['cfg.preset_completo_ok'] = 'Rede completa aplicada (pode ficar pesado)',
+	['area.reverter'] = 'Reverter (tirar do ModLoader)',
+	['area.restaurar_backup'] = 'Restaurar backup',
+	['area.reverter_dica'] = 'Reverter apaga o nodes*.dat que o editor gravou na pasta do ModLoader: o jogo volta a usar o arquivo original. Restaurar backup reescreve esse arquivo com a copia guardada antes da primeira gravacao.',
+	['area.perg_reverter'] = 'Reverter a area %d? O jogo volta a usar o nodes*.dat original.',
+	['area.perg_restaurar'] = 'Restaurar o backup da area %d? O arquivo atual do ModLoader sera substituido.',
 }

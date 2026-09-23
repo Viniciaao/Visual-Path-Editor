@@ -9,6 +9,9 @@ original: **não gravava os `nodes*.dat` corretamente** e era difícil de usar.
 * **Validação antes de gravar**: se algo estiver errado, o mod avisa e **não salva**.
 * Gravação em pasta do **ModLoader** — o `gta3.img` original **nunca é alterado**.
 * Edição pelo **painel numérico** e **direto no mundo** (arrastando com o mouse).
+* **[TUTORIAL.md](TUTORIAL.md) — tutorial completo em português**: o que é cada tipo
+  de node, como criar nodes de **carro, pedestre e barco**, navi nodes, links,
+  flags, validação, salvamento e como voltar atrás.
 
 ---
 
@@ -68,6 +71,9 @@ Quando você salva, o mod escreve **três cópias**:
 
 ## 4. Como usar
 
+> Guia passo a passo (com receitas de rua, calçada, barco, semáforo e conserto):
+> **[TUTORIAL.md](TUTORIAL.md)**.
+
 ### Teclas (todas configuráveis no INI / aba Configurações)
 
 | Tecla | Ação |
@@ -101,9 +107,9 @@ Quando você salva, o mod escreve **três cópias**:
 |---|---|
 | **Editor** | lista e edita o node selecionado: coordenadas, tipo (veículo/pedestre/barco), largura, flood fill, todas as flags, links e o navi node do link |
 | **Navi** | cria/edita/remove navi nodes: alvo, direção, largura, faixas, semáforo, trem; gerar em lote e remover os inúteis |
-| **Criar/Remover** | escolhe o tipo, cria na mira/no jogador, liga/desliga espelhamento de links, bloqueio manual de nodes, apagar node |
-| **Área** | lista as 64 áreas (quantos nodes/links/navis cada uma), carrega/descarrega, mostra de onde o arquivo veio e cria uma **área vazia** para arquivos que ainda não existem |
-| **Salvar** | resumo do que mudou, validação, salvar / salvar como / reverter / restaurar backup |
+| **Criar/Remover** | escolhe o tipo do node novo, cria na mira/no jogador, modo de ligação, espelhamento de links, bloqueio manual, apagar node |
+| **Área** | lista as áreas carregadas e as 64 do mundo (nodes/links/navis), carrega/descarrega, mostra a origem de cada arquivo e onde ele será gravado, cria **área vazia**, e por área: **Salvar alterações**, **Exportar**, **Reverter (tirar do ModLoader)** e **Restaurar backup** |
+| **Salvar** | diferenças por arquivo, resumo da validação, **Validar de novo**, **Corrigir tudo**, **Salvar alterações**, **Salvar mesmo assim** e **Limpar cache do ModLoader** |
 | **Câmera** | teleporte e ajustes de visualização (distância, cores, mapa) |
 | **Configurações** | idioma, teclas, render, passos, espelhamento, restaurar padrões |
 | **Histórico** | log do mod (também vai para `moonloader/VisualPathEditor.log`) |
@@ -275,7 +281,7 @@ ambiente, round-trip das áreas carregadas e validação, e escreve o resultado 
 | Travamento/crash e preciso saber onde | Ligue `Diagnostico no log (log_api)`: o log passa a gravar, a cada quadro, a fase do desenho (`links`, `nodes`, `navis`, `hud`, `minimapa`). A última linha antes do travamento diz em qual fase foi |
 | Nodes "colados na tela", não no mapa | Ligue o **F10** (diagnóstico): ele desenha um quadrado vermelho no canto superior esquerdo, uma cruz verde no centro e um quadrado azul no canto inferior direito, além de marcas **no mundo** (amarelo no jogador, magenta 20 m ao norte, ciano 20 m a leste). Me diga onde as marcas caíram e o log mostra os números crus |
 | Desenho atravessa paredes | Aba *Configurações* → **Ocultar nodes atrás de paredes/predios (oclusão)** já vem ligado; aumente `oclusao_raio` para checar mais longe ou reduza `oclusao_max_por_quadro` se o FPS cair |
-| Muitos quadrados/linhas, tela confusa | Aba *Configurações* → *Render* → botão **Desenho limpo** (padrão da 1.0.4). Se ainda quiser menos: reduza `distancia`, `distancia_navis`, `max_nodes` e deixe **Linhas dos links** em *Só do node selecionado* |
+| Muitos quadrados/linhas, tela confusa | Aba *Configurações* → *Render* → botão **Desenho limpo** (padrão). Se ainda quiser menos: reduza `distancia`, `distancia_navis`, `max_nodes` e deixe **Linhas dos links** em *Só do node selecionado* |
 | Quero ver a rede inteira (todas as ligações) | Botão **Ver rede completa**, ou mude **Linhas dos links** para *Todas* e aumente `distancia` |
 | Crash ao desenhar | O desenho passa por checagens (`exigir_jogo_pronto`, validade das coordenadas, tetos por quadro) e nunca entrega handle/fonte inválidos à API do MoonLoader — veja *Nota de correção* abaixo |
 
@@ -302,7 +308,27 @@ Corrigido em **1.0.2** (campo renomeado para `fontRef`), com três proteções n
 
 ---
 
-## 10. Língua / Language
+## 10. Histórico de versões
+
+* **1.0.5** — flags de **navi** passam a ser gravadas de verdade (`WIDTH`,
+  `LEFT_LANES`, `RIGHT_LANES`, `LIGHT_DIRECTION`, `TRAFFIC_LIGHT`,
+  `TRAIN_CROSSING` em `navi.flags`); a lista de arquivos é reescaneada depois de
+  **reverter**/**restaurar backup** (antes o mod continuava achando que o arquivo
+  apagado existia); **Reverter** e **Restaurar backup** agora pedem confirmação;
+  o checkbox **Criar o link inverso automaticamente** passou a valer de fato
+  (desligado = todo link sai de mão única, com aviso no painel); botão
+  **Limpar cache do ModLoader** com rótulo próprio; **[TUTORIAL.md](TUTORIAL.md)**.
+* **1.0.4** — visual de editor: marcadores de 1,5–6 px, navi em cruz, **só os links
+  do node selecionado**, presets **Desenho limpo** / **Ver rede completa**.
+* **1.0.3** — oclusão por raycast (nada é desenhado através de prédio) e fade por
+  distância.
+* **1.0.2** — desenho ancorado no mundo (tamanho em metros, perspectiva) e correção
+  do crash do HUD (`fontRef`).
+* **1.0.1** — correções de estabilidade do desenho e das fontes.
+
+---
+
+## 11. Língua / Language
 
 Veja a seção em inglês abaixo. O idioma é trocado na aba **Configurações** (idioma
 `pt`/`en`) e fica salvo no INI.
@@ -334,6 +360,11 @@ Good to know:
 * Draw budgets (`max_linhas`, `max_nodes`, `max_navis`) plus an automatic light mode
   keep the frame time in check; set `log_api = true` to log the draw phase of every
   frame (the last line before a freeze tells you where it happened).
+* **1.0.5**: navi flag fields (width, left/right lanes, light direction, traffic
+  light, train crossing) are actually written to `navi.flags`; the file list is
+  rescanned after *Revert* / *Restore backup*; both of those actions ask for
+  confirmation; the *create the reverse link automatically* checkbox is honoured
+  (with mirroring off every link is one-way, and the panel says so).
 * **Clean by default (1.0.4)**: small markers (3-12 px), navi nodes as crosses, and
   **only the selected node's links** are drawn - drawing every link of every node
   turned the city into a web of lines. *Link lines* can be set to *All* and the

@@ -596,6 +596,8 @@ return {
 ['log.limpar'] = 'Clear',
 ['log.copiar'] = 'Copy',
 ['log.aba_alteracoes'] = 'Changes',
+	['ui.limpar_cache'] = "Clear ModLoader cache",
+	['cr.espelho_desligado'] = "Mirroring is off in the settings: links are created one-way.",
 ['log.aba_erros'] = 'Errors',
 ['log.alteracoes'] = 'Change history',
 ['log.sem_alteracoes'] = 'No changes.',
@@ -700,4 +702,9 @@ return {
 	['cfg.preset_dica'] = 'clean = few markers and only the selected node links; full = everything visible (heavier)',
 	['cfg.preset_limpo_ok'] = 'Clean draw applied',
 	['cfg.preset_completo_ok'] = 'Full network applied (can be heavy)',
+	['area.reverter'] = 'Revert (remove from ModLoader)',
+	['area.restaurar_backup'] = 'Restore backup',
+	['area.reverter_dica'] = 'Revert deletes the nodes*.dat the editor wrote into the ModLoader folder, so the game goes back to the original file. Restore backup rewrites that file with the copy saved before the first write.',
+	['area.perg_reverter'] = 'Revert area %d? The game will use the original nodes*.dat again.',
+	['area.perg_restaurar'] = 'Restore the backup of area %d? The current ModLoader file will be replaced.',
 }

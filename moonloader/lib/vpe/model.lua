@@ -526,22 +526,54 @@ end
 function M:setNodeFlag(areaId, index, flagName, value)
 	local node = self:node(areaId, index)
 	if not node then return false, 'node inexistente' end
+	if type(value) == 'boolean' then value = value and 1 or 0 end
 	local newFlags = dat.setNodeFlag(node.flags or 0, flagName, value)
 	return self:setNodeField(areaId, index, 'flags', newFlags)
 end
 
+--- Campos do navi que na verdade sao BITS da palavra de flags (o arquivo so
+--- guarda x, y, areaID, nodeID, dirX, dirY e flags).
+local NAVI_FLAG_FIELDS = {
+	width = 'WIDTH',              -- 0..255
+	leftLanes = 'LEFT_LANES',     -- 0..7
+	rightLanes = 'RIGHT_LANES',   -- 0..7
+	lightDirection = 'LIGHT_DIRECTION', -- 0/1
+	trafficLight = 'TRAFFIC_LIGHT',     -- 0..2
+	trainCrossing = 'TRAIN_CROSSING',   -- 0/1
+}
+
+--- Grava um campo do navi. Campos de flags vao para a palavra de flags (antes
+--- eram gravados como campos soltos, que o serializador simplesmente ignorava).
 function M:setNaviField(areaId, naviIndex, field, value)
 	local area = self.areas[areaId]
 	if not area or not area.navis[naviIndex] then return false, 'navi inexistente' end
 	local navi = area.navis[naviIndex]
-	local old = navi[field]
-	if old == value then return true end
+
+	-- aceita true/false tambem (o painel manda 1/0, mas scripts e testes podem
+	-- mandar booleano)
+	if type(value) == 'boolean' then value = value and 1 or 0 end
+
+	local flagName = NAVI_FLAG_FIELDS[field]
+	local before, after
+	if flagName then
+		before = navi.flags or 0
+		after = dat.setNaviFlag(before, flagName, value)
+	else
+		before = navi[field]
+		after = value
+	end
+	if before == after then return true end
+
 	self:pushDelta(string.format('alterar %s do navi a%d #%d', tostring(field), areaId, naviIndex - 1), function()
-		navi[field] = old
+		if flagName then navi.flags = before else navi[field] = before end
 	end, function()
-		navi[field] = value
+		if flagName then navi.flags = after else navi[field] = after end
 	end)
-	navi[field] = value
+	if flagName then
+		navi.flags = after
+	else
+		navi[field] = after
+	end
 	self:markDirty(areaId)
 	return true
 end

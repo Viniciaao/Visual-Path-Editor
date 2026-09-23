@@ -28,7 +28,7 @@ local M = {}
 
 local T = i18n.t
 
-M.VERSION = '1.0.4'
+M.VERSION = '1.0.5'
 M.AREA_COUNT = 64
 
 M.VK_CONTROL = 0x11
@@ -675,7 +675,7 @@ function M:createNode(kind, x, y, z)
 		local nearest = self.project:nearestNode(areaId, x, y, 40.0, kind == 'ped' and 'ped' or 'vehicle')
 		-- nearestNode devolve { index, node, distance }: o link precisa do indice
 		if nearest and nearest.index ~= index then
-			self.project:addLink(areaId, index, areaId, nearest.index, { oneWay = false })
+			self.project:addLink(areaId, index, areaId, nearest.index, { oneWay = self:linkIsOneWay() })
 			if self.settings.edicao.criar_navi_automatico then
 				local linkIndex = self.project:findLink(self.project:node(areaId, index), areaId, nearest.index - 1)
 				if linkIndex then self.project:addNaviOnSegment(areaId, index, linkIndex) end
@@ -714,6 +714,17 @@ function M:deleteSelected(force)
 	return ok, err
 end
 
+--- Pede confirmacao antes de mexer nos arquivos do ModLoader.
+function M:askRevert(areaId)
+	self.pendingConfirm = { kind = 'revert', area = areaId }
+	return false, 'confirmar'
+end
+
+function M:askRestoreBackup(areaId)
+	self.pendingConfirm = { kind = 'restore', area = areaId }
+	return false, 'confirmar'
+end
+
 function M:confirmPending()
 	local pending = self.pendingConfirm
 	self.pendingConfirm = nil
@@ -722,6 +733,11 @@ function M:confirmPending()
 		return self:deleteSelected(true)
 	elseif pending.kind == 'save' then
 		return self:save({ force = true })
+	elseif pending.kind == 'revert' then
+		self.project:unloadArea(pending.area, false)
+		return self:revertArea(pending.area)
+	elseif pending.kind == 'restore' then
+		return self:restoreBackup(pending.area)
 	end
 	return false
 end
@@ -742,6 +758,12 @@ function M:markLinkSource()
 	return true
 end
 
+--- O proximo link sai de mao unica? (modo "sentido unico" ou espelhamento desligado)
+function M:linkIsOneWay()
+	if self.linkMode == 'unico' then return true end
+	return self.settings.edicao.espelhar_links == false
+end
+
 function M:createLink(targetArea, targetIndex)
 	local source = self.linkSource
 	if not source then return false, T('cr.link_origem') end
@@ -755,7 +777,7 @@ function M:createLink(targetArea, targetIndex)
 		return false, T('cr.link_destino')
 	end
 
-	local ok, err = self.project:addLink(source.area, source.index, dstArea, dstIndex, { oneWay = self.linkMode == 'unico' })
+	local ok, err = self.project:addLink(source.area, source.index, dstArea, dstIndex, { oneWay = self:linkIsOneWay() })
 	if not ok then
 		self:setStatus(err, 'warn')
 		return false, err

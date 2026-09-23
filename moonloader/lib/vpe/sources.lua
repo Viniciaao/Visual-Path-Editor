@@ -238,6 +238,13 @@ function M:scan()
 	return self.areas
 end
 
+--- Esquece a varredura (usar depois de mexer nos arquivos por fora do mod:
+--- reverter, restaurar backup, limpar cache...).
+function M:rescan()
+	self.scanned = false
+	return self:scan()
+end
+
 function M:info(areaId)
 	if not self.scanned then self:scan() end
 	return self.areas[tonumber(areaId) or 0]
@@ -458,6 +465,9 @@ function M:revert(areaId)
 	if fs.exists(exportPath) then
 		fs.remove(exportPath)
 	end
+	-- a varredura guardava o caminho do arquivo que acabou de sair: sem isto o
+	-- editor continuaria tentando ler um arquivo que nao existe mais
+	self:rescan()
 	return removed
 end
 
@@ -468,7 +478,9 @@ function M:restoreBackup(areaId)
 	local data = fs.readAll(backup)
 	if not data then return false, 'falha ao ler o backup' end
 	fs.mkdir(self.ownImgFolder)
-	return fs.writeAll(self:targetPath(areaId), data)
+	local ok, err = fs.writeAll(self:targetPath(areaId), data)
+	self:rescan()
+	return ok, err
 end
 
 M.looseVariants = looseVariants
