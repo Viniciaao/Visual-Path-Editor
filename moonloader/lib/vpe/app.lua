@@ -28,7 +28,7 @@ local M = {}
 
 local T = i18n.t
 
-M.VERSION = '1.0.6'
+M.VERSION = '1.0.7'
 M.AREA_COUNT = 64
 
 M.VK_CONTROL = 0x11
@@ -386,12 +386,26 @@ function M:loadAroundPlayer()
 		-- sem jogo: cai na primeira area configurada ou na 0
 		areaId = tonumber(util.trim(self.settings.geral.areas_extras or ''):match('^(%d+)')) or 0
 		self:loadArea(areaId)
+		if not self.project.selection.area then self:focusArea(areaId) end
 		loaded[#loaded + 1] = areaId
 		return loaded
 	end
 
+	local jaCarregada = self.project:area(areaId) ~= nil
 	local ok, err = self:loadArea(areaId)
 	if ok then loaded[#loaded + 1] = areaId else self:setStatus(err, 'warn') end
+
+	-- a area do jogador vira a area "atual" do painel (se ainda nao houver uma)
+	if not self.project.selection.area then self:focusArea(areaId) end
+	local area = self.project:area(areaId)
+	local nodeCount = area and #area.nodes or 0
+	if not ok and err then
+		self:notifyChat(T('area.chat_falhou', areaId, tostring(err)))
+	else
+		local key = jaCarregada and 'area.chat_ja_carregada' or 'area.chat_carregada'
+		self:setStatus(T(key, areaId, nodeCount), jaCarregada and 'info' or 'info')
+		self:notifyChat(T(key, areaId, nodeCount))
+	end
 
 	if self.settings.geral.carregar_vizinhas ~= false then
 		local neighbors = geo.areaNeighborhood(areaId)
@@ -1262,6 +1276,37 @@ end
 --------------------------------------------------------------------------------
 -- Render / interface
 --------------------------------------------------------------------------------
+
+M.UI_SCALE_DEFAULT = 1.35
+
+--- Muda o tamanho do painel (botoes A-/A+ e aba Configuracoes).
+function M:changeUiScale(delta)
+	local geral = self.settings.geral
+	local value = (tonumber(geral.escala_ui) or M.UI_SCALE_DEFAULT) + (delta or 0)
+	if value < 0.6 then value = 0.6 end
+	if value > 2.5 then value = 2.5 end
+	value = math.floor(value * 100 + 0.5) / 100
+	geral.escala_ui = value
+	if self.ui then
+		self.ui.appliedScale = nil
+		self.ui._scaleMode = nil
+	end
+	config.save(self.settings)
+	self:setStatus(T('cfg.escala_ok', value), 'info')
+	if self.ui and self.ui:scaleMode() == 'sem_fonte' then
+		self:notifyChat(T('cfg.escala_sem_fonte'))
+	end
+	return value
+end
+
+--- A area "atual" do painel (abas Editor/Navi/Area).
+--- Sem isso o painel continua dizendo "sem area" e o botao "Carregar nodes"
+--- parece nao fazer nada - foi o que o usuario relatou.
+function M:focusArea(areaId)
+	if not areaId or not self.project:area(areaId) then return false end
+	self.project:select(areaId, nil, nil)
+	return true
+end
 
 --- Aviso curto no chat do jogo. E o unico feedback possivel quando o painel
 --- nao consegue abrir (sem ImGui ou desativado por erro).

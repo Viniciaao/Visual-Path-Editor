@@ -95,6 +95,25 @@ local function listLuaFiles()
 end
 
 t.describe('entrada - sintaxe', function()
+	t.test('nenhum arquivo usa ---[[ (isso nao abre bloco de comentario)', function()
+		-- `---[[` e um comentario de UMA linha: o texto seguinte vira codigo e o
+		-- erro aparece longe da causa ("syntax error near 'o'"). Ja perdemos tempo
+		-- com isso duas vezes; agora a suite avisa.
+		local files = listLuaFiles()
+		local problems = {}
+		for i = 1, #files do
+			local source = fs.readAll(files[i]) or ''
+			local line = 0
+			for text in source:gmatch('[^\n]*') do
+				line = line + 1
+				if text:find('^%s*%-%-%-%[%[') then
+					problems[#problems + 1] = files[i] .. ':' .. line
+				end
+			end
+		end
+		t.eq(#problems, 0, 'troque por --[[: ' .. table.concat(problems, ', '))
+	end)
+
 	t.test('todos os arquivos .lua do mod compilam', function()
 		local files = listLuaFiles()
 		t.ok(#files >= 15, 'esperava varios modulos, encontrei ' .. #files)

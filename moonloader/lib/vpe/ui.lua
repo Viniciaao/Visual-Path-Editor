@@ -93,6 +93,7 @@ function M:init()
 	-- inventario da API: sem isto, um widget que nao existe naquela build some
 	-- calado e o usuario acha que o painel "nao abre"
 	log.info('interface: api=%s', table.concat(self:apiInventory(), ', '))
+	log.info('interface: refs=%s', table.concat(self:refsInventory(), ', '))
 	if not self.hook or self.hook == 'sem hook' then
 		log.warn('interface: nenhum hook de quadro disponivel (OnFrame/OnDrawFrame): o painel nao vai desenhar')
 	end
@@ -109,7 +110,27 @@ function M:apiInventory()
 	}
 	local out = {}
 	for i = 1, #wanted do
-		out[#out + 1] = wanted[i] .. '=' .. (self:has(wanted[i]) and 'ok' or '-')
+		local name = wanted[i]
+		local ok = name:sub(1, 2) == 'Im' and self:ctorReady(name) or self:has(name)
+		out[#out + 1] = name .. '=' .. (ok and 'ok' or '-')
+	end
+	return out
+end
+
+--[[
+	Diagnostico: os refs (ImBool/ImInt/...) sairam com objeto nativo? Se o
+	construtor do binding nao existir, o mod cai num ref so de Lua e o widget
+	nasce morto (slider/checkbox que nao mexe em nada). O log do jogo precisa
+	dizer isso com todas as letras.
+]]
+function M:refsInventory()
+	local wanted = { { 'bool', true }, { 'int', 0 }, { 'float', 0 }, { 'buffer', 32 } }
+	local out = {}
+	for i = 1, #wanted do
+		local kind = wanted[i][1]
+		local ok, ref = pcall(function() return self:makeRef(kind, wanted[i][2]) end)
+		local native = ok and ref and ref.native ~= nil
+		out[#out + 1] = kind .. '=' .. (native and 'nativo' or 'so-lua')
 	end
 	return out
 end
@@ -207,27 +228,74 @@ function M:has(name)
 	return type(self.binding and self.binding[name]) == 'function'
 end
 
+--[[
+	Construtores do binding: aceita os dois estilos que existem por ai.
+
+	No Moon ImGui o `ImBool`/`ImInt`/`ImFloat`/`ImVec2`/`ImBuffer` NAO sao
+	funcoes: sao userdata com __call (e no mimgui sao cdata de `binding.new.*`).
+	Olhar `type(v) == 'function'` (como era antes) dizia que nada disso existia e
+	o painel abria sem nenhum widget ligado: checkbox, slider, campo de texto,
+	combo e cor nao reagiam a nada. A prova e a linha `interface: api=...` no log
+	do jogo (ImBool=-, ImInt=-, ... quando na verdade estavam la).
+]]
+function M:construct(name, ...)
+	local binding = self.binding
+	if not binding then return nil end
+	local v = binding[name]
+	if v == nil then
+		-- caminho com ponto: 'new.bool', 'new.ImVec2', ...
+		local head, tail = tostring(name):match('^([^.]+)%.(.+)$')
+		if head then
+			local t = binding[head]
+			v = t and t[tail]
+		end
+	end
+	if v == nil then return nil end
+	local ok, obj = pcall(v, ...)
+	if ok and obj ~= nil then return obj end
+	return nil
+end
+
+--- Construtor existe e funciona? (usado no log do inicio e no diagnostico)
+function M:ctorReady(name)
+	self.ctorCache = self.ctorCache or {}
+	if self.ctorCache[name] == nil then
+		local probes = {
+			ImBool = { true }, ImInt = { 0 }, ImFloat = { 0 }, ImDouble = { 0 },
+			ImBuffer = { 64 }, ImVec2 = { 0, 0 }, ImVec4 = { 0, 0, 0, 1 },
+			['new.bool'] = { false }, ['new.int'] = { 0 }, ['new.float'] = { 0 },
+			['new.ImVec2'] = { 0, 0 }, ['new.ImVec4'] = { 0, 0, 0, 1 },
+		}
+		local probe = probes[name] or {}
+		self.ctorCache[name] = self:construct(name, (table.unpack or unpack)(probe)) ~= nil
+	end
+	return self.ctorCache[name]
+end
+
 --- Cria um "ref" (ImBool/ImInt/ImFloat/ImBuffer ou os cdata do mimgui) com
 --- acesso uniforme por :get()/:set().
 function M:makeRef(kind, value)
-	local binding = self.binding
 	local native, isCdata = nil, false
 	if kind == 'bool' then
-		if type(binding.ImBool) == 'function' then native = binding.ImBool(value and true or false)
-		elseif binding.new and binding.new.bool then native = binding.new.bool(value and true or false) isCdata = true end
+		native = self:construct('ImBool', value and true or false)
+		if not native then native = self:construct('new.bool', value and true or false) isCdata = native ~= nil end
 	elseif kind == 'int' then
-		if type(binding.ImInt) == 'function' then native = binding.ImInt(util.round(value or 0))
-		elseif binding.new and binding.new.int then native = binding.new.int(util.round(value or 0)) isCdata = true end
+		native = self:construct('ImInt', util.round(value or 0))
+		if not native then native = self:construct('new.int', util.round(value or 0)) isCdata = native ~= nil end
 	elseif kind == 'float' then
-		if type(binding.ImFloat) == 'function' then native = binding.ImFloat(value or 0)
-		elseif binding.new and binding.new.float then native = binding.new.float(value or 0) isCdata = true end
+		native = self:construct('ImFloat', value or 0)
+		if not native then native = self:construct('new.float', value or 0) isCdata = native ~= nil end
 	elseif kind == 'buffer' then
-		if type(binding.ImBuffer) == 'function' then
-			local ok, buf = pcall(binding.ImBuffer, value or 256)
-			if ok then native = buf end
-		elseif binding.new and binding.new.char then
-			local ok, buf = pcall(function() return binding.new.char[value or 256]() end)
-			if ok then native = buf isCdata = true end
+		native = self:construct('ImBuffer', value or 256)
+		if not native then
+			-- mimgui: `new.char` e uma tabela indexada pelo tamanho (char[256])
+			local newTable = self.binding and self.binding.new
+			local charTable = newTable and newTable.char
+			local ctor = type(charTable) == 'table' and charTable[value or 256] or nil
+			if ctor ~= nil then
+				local ok, buf = pcall(ctor)
+				if ok and buf ~= nil then native = buf isCdata = true end
+			end
 		end
 	end
 	-- Sem o objeto nativo (build sem ImBool/ImInt/ImFloat/ImBuffer) o ref continua
@@ -285,51 +353,65 @@ function M:syncRef(kind, key, value)
 end
 
 function M:vec2(x, y)
-	local binding = self.binding
-	if type(binding.ImVec2) == 'function' then
-		local ok, v = pcall(binding.ImVec2, x, y)
-		if ok then return v end
-	end
-	if binding.new and binding.new.ImVec2 then
-		local ok, v = pcall(function() return binding.new.ImVec2(x, y) end)
-		if ok then return v end
-	end
-	return nil
+	local v = self:construct('ImVec2', x, y)
+	if not v then v = self:construct('new.ImVec2', x, y) end
+	return v
 end
 
 function M:vec4(r, g, b, a)
-	local binding = self.binding
-	if type(binding.ImVec4) == 'function' then
-		local ok, v = pcall(binding.ImVec4, r, g, b, a)
-		if ok then return v end
-	end
-	if binding.new and binding.new.ImVec4 then
-		local ok, v = pcall(function() return binding.new.ImVec4(r, g, b, a) end)
-		if ok then return v end
-	end
-	return nil
+	local v = self:construct('ImVec4', r, g, b, a)
+	if not v then v = self:construct('new.ImVec4', r, g, b, a) end
+	return v
 end
 
 --------------------------------------------------------------------------------
 -- Atalhos de widget
 --------------------------------------------------------------------------------
 
+--[[
+	Todo texto e formatado AQUI e vai como argumento unico para o ImGui.
+
+	No Moon ImGui o `imgui.Text(fmt, ...)` so usa o primeiro argumento (a
+	formatacao e do C, nao do Lua). Chamar `imgui.Text('%s', texto)` - que era o
+	que o mod fazia - desenhava literalmente "%s" no painel, e era isso que
+	aparecia na tela do usuario: o painel abria cheio de "%s %s".
+]]
 function M:text(fmt, ...)
-	local text = (select('#', ...) > 0) and string.format(fmt, ...) or tostring(fmt)
-	self:call('Text', '%s', text)
+	self:call('Text', M.format(fmt, ...))
 end
 
+--- Formata no Lua (o Moon ImGui so usa o primeiro argumento dos textos).
+--- E funcao de modulo (ponto, sem self): `M.format(fmt, ...)`.
+function M.format(fmt, ...)
+	if select('#', ...) == 0 then return tostring(fmt) end
+	local ok, out = pcall(string.format, fmt, ...)
+	if ok then return out end
+	-- formato invalido: melhor mostrar o texto cru do que derrubar o quadro
+	return tostring(fmt)
+end
+
+--[[
+	Atencao: TextColored/TextWrapped nao devolvem nada no Moon ImGui (sao void).
+	testar o resultado delas para decidir se desenha o fallback fazia cada linha
+	colorida sair DUAS vezes no painel (uma colorida e uma branca).
+\]]
 function M:textWrapped(fmt, ...)
-	local text = (select('#', ...) > 0) and string.format(fmt, ...) or tostring(fmt)
-	if not self:has('TextWrapped') or not self:call('TextWrapped', '%s', text) then
-		self:call('Text', '%s', text)
+	local text = M.format(fmt, ...)
+	if self:has('TextWrapped') then
+		self:call('TextWrapped', text)
+		return
 	end
+	self:call('Text', text)
 end
 
 function M:textColored(color, text)
+	local str = tostring(text)
 	local v = self:vec4(color[1], color[2], color[3], color[4] or 1.0)
-	if v and self:has('TextColored') and self:call('TextColored', v, '%s', text) then return end
-	self:call('Text', '%s', text)
+	if v and self:has('TextColored') then
+		self:call('TextColored', v, str)
+		return
+	end
+	self:call('Text', str)
 end
 
 function M:textDim(text)
@@ -340,7 +422,7 @@ function M:separator() self:call('Separator') end
 function M:sameLine() self:call('SameLine') end
 function M:spacing() self:call('Spacing') end
 function M:dummy(w, h) self:call('Dummy', self:vec2(w, h)) end
-function M:bullet(text) self:call('BulletText', '%s', text) end
+function M:bullet(text) self:call('BulletText', tostring(text)) end
 function M:treePop() self:call('TreePop') end
 function M:endChild() self:call('EndChild') end
 
@@ -464,9 +546,9 @@ function M:getIO()
 end
 
 function M:tooltip(text)
-	if self:has('SetTooltip') then self:call('SetTooltip', '%s', text) return end
+	if self:has('SetTooltip') then self:call('SetTooltip', tostring(text)) return end
 	if self:has('BeginTooltip') and self:call('BeginTooltip') then
-		self:call('Text', '%s', text)
+		self:call('Text', tostring(text))
 		self:call('EndTooltip')
 	end
 end
@@ -527,6 +609,49 @@ end
 --------------------------------------------------------------------------------
 -- Frame
 --------------------------------------------------------------------------------
+
+--[[
+	Escala da interface. O usuario reclamou que o painel e "muito pequeno pro
+	meus olhos": o ImGui desenha com ~13 px e nao ha font builder aqui.
+
+	Ordem de preferencia:
+	  1. io.FontGlobalScale  (escala a fonte inteira: melhor resultado)
+	  2. SetWindowFontScale  (escala o texto so dentro da nossa janela)
+	  3. so a janela cresce  (a fonte continua pequena, mas nao escondemos nada)
+]]
+function M:uiScale()
+	local geral = (self.app.settings and self.app.settings.geral) or {}
+	local v = tonumber(geral.escala_ui) or 1.35
+	if v < 0.6 then v = 0.6 end
+	if v > 2.5 then v = 2.5 end
+	return v
+end
+
+function M:scaleMode()
+	-- chamada a cada quadro: barata, porque so refaz o teste se a escala mudou
+	local scale = self:uiScale()
+	if self.appliedScale == scale and self._scaleMode then return self._scaleMode end
+	self.appliedScale = scale
+	self._scaleMode = nil
+
+	local io = self:getIO()
+	if io then
+		local ok = pcall(function() io.FontGlobalScale = scale end)
+		if ok then
+			local okRead, got = pcall(function() return io.FontGlobalScale end)
+			if okRead and type(got) == 'number' and math.abs(got - scale) < 0.001 then
+				self._scaleMode = 'io'
+				return self._scaleMode
+			end
+		end
+	end
+	if self:has('SetWindowFontScale') then
+		self._scaleMode = 'janela'
+		return self._scaleMode
+	end
+	self._scaleMode = 'sem_fonte'
+	return self._scaleMode
+end
 
 --- O ImGui ja desenhou pelo menos um quadro? (diagnostico do "F7 nao abre")
 function M:hasDrawn()
@@ -612,6 +737,9 @@ function M:drawWindow()
 		title = T('ui.painel_lateral_sem_area', app.version)
 	end
 
+	local scale = self:uiScale()
+	self:setNextWindowSize(440 * scale, 640 * scale, true)
+
 	self.openRef = self.openRef or self:makeRef('bool', true)
 	if not self:beginWindow(title, self.openRef) then
 		self:endWindow()
@@ -623,6 +751,8 @@ function M:drawWindow()
 		self:endWindow()
 		return false
 	end
+	-- sem FontGlobalScale, o texto da nossa janela e escalado aqui
+	if self:scaleMode() == 'janela' then self:call('SetWindowFontScale', scale) end
 
 	-- barra com o seletor de abas
 	self:drawTabs()
@@ -649,6 +779,10 @@ function M:drawTabs()
 	if changed and index then
 		self.tab = M.TABS[index] and M.TABS[index].id or self.tab
 	end
+	self:sameLine()
+	if self:smallButton('A-') then app:changeUiScale(-0.1) end
+	self:sameLine()
+	if self:smallButton('A+') then app:changeUiScale(0.1) end
 	self:sameLine()
 	if self:button(T('ui.fechar')) then self:setVisible(false) end
 end
@@ -730,8 +864,26 @@ function M:draw_editor_tab()
 	local area = app.project:area(app.project.selection.area)
 
 	if not area then
-		self:textDim(T('save.sem_area'))
+		-- Sem area selecionada a aba ficava so com o botao "Carregar nodes": quem
+		-- ja tinha as areas carregadas (auto-carregar ligado) clicava e nao via
+		-- nada mudar no painel - foi o "clico em carregar e nada acontece".
+		-- Agora a lista de areas carregadas aparece aqui para escolher.
+		local loaded = app.project:loadedAreas()
+		self:textDim(#loaded > 0 and T('save.escolha_area', #loaded) or T('save.nenhuma_area'))
 		if self:button(T('nav.carregar')) then app:loadAroundPlayer() end
+		if #loaded == 0 then return end
+		self:separator()
+		for i = 1, #loaded do
+			local id = loaded[i]
+			local stats = app.project:stats(id) or {}
+			local label = string.format('%s %d  -  %s: %d  %s: %d  navi: %d', T('sel.area'), id,
+				T('nav.node'), stats.nodeCount or 0, T('nav.link'), stats.linkCount or 0, stats.naviCount or 0)
+			if app.project:isDirty(id) then label = label .. '  (' .. T('hud.modificado') .. ')' end
+			if self:selectable(label .. '##ed' .. id, false) then
+				app.project:select(id, nil, nil)
+				return
+			end
+		end
 		return
 	end
 
@@ -754,6 +906,7 @@ function M:draw_editor_tab()
 	self:separator()
 	if not ref then
 		self:textColored(M.CORES.warn, T('sel.nenhum'))
+		self:textDim(T('sel.dica_selecao'))
 		self:textDim(T('sel.tipo_no_editor'))
 		self:drawWorldButtons()
 		return
@@ -1402,6 +1555,14 @@ function M:draw_config_tab()
 			i18n.setLang(code)
 			app:setStatus(T('misc.idioma_alterado'), 'info')
 		end
+		local escChanged, escValue = self:labeledSlider(T('cfg.escala_ui'), 'float', 'cfg_escala',
+			settings.geral.escala_ui or 1.35, 0.6, 2.5, 0.05)
+		if escChanged then
+			settings.geral.escala_ui = escValue
+			self.appliedScale = nil
+			self._scaleMode = nil
+			config.save(settings)
+		end
 		self:checkboxBinding(T('cfg.carregar_vizinhas'), 'bool', 'cfg_viz', settings.geral.carregar_vizinhas ~= false,
 			function(v) settings.geral.carregar_vizinhas = v end)
 		self:checkboxBinding(T('cfg.debug'), 'bool', 'cfg_debug', settings.geral.debug == true,
@@ -1670,7 +1831,7 @@ function M:draw_ajuda_tab()
 	self:text(T('val.correcao_manual_nota'))
 	self:text(T('val.file_note', 0, tostring(info.gta3img and 'models/gta3.img' or '?')))
 	self:separator()
-	self:textDim(T('misc.desenvolvido_por'))
+	self:textDim(T('misc.desenvolvido_por', 'Viniciaao'))
 	self:separator()
 	if self:button(T('act.pausar')) then self:setVisible(false) end
 end

@@ -615,7 +615,90 @@ t.describe('app - interface', function()
 		mock.clearUiLog()
 		t.ok(mock.runUiFrame(), 'desenhou')
 		t.ok(mock.countCalls('Begin') == 1)
-		t.ok(#mock.texts() > 3, 'escreveu informacao na tela')
+		t.ok(#mock.texts() >= 3, 'escreveu informacao na tela')
+	end)
+
+	t.test('texto colorido desenha UMA vez (nao duplica a linha)', function()
+		-- o Moon ImGui nao devolve nada em TextColored; testar o retorno para
+		-- cair no fallback desenhava a linha duas vezes (colorida + branca)
+		local A = liveApp({ withUi = true })
+		mock.clearUiLog()
+		A.ui:textColored({ 1, 1, 1, 1 }, 'linha unica')
+		local texts = mock.texts()
+		t.eq(#texts, 1, 'uma chamada de texto por linha')
+		t.eq(texts[1], 'linha unica')
+		A.ui:textWrapped('linha %d', 2)
+		local t2 = mock.texts()
+		t.eq(#t2, 2, 'textWrapped tambem desenha uma vez so')
+		t.eq(t2[2], 'linha 2', 'e formata o texto no Lua (o ImGui usa so o 1o argumento)')
+	end)
+
+	t.test('a escala da interface aumenta a fonte pelo ImGuiIO', function()
+		local A = liveApp({ withUi = true })
+		local io = mock.setIo({})
+		A.settings.geral.escala_ui = 1.5
+		A.ui.appliedScale = nil
+		A.ui._scaleMode = nil
+		t.eq(A.ui:scaleMode(), 'io', 'usou FontGlobalScale')
+		t.eq(io.FontGlobalScale, 1.5, 'escala aplicada na fonte')
+		-- a janela tambem nasce maior, senao o texto nao cabe
+		A:toggleMenu()
+		mock.clearUiLog()
+		mock.runUiFrame()
+		local sizes = {}
+		for i = 1, #mock.imguiCalls do
+			if mock.imguiCalls[i][1] == 'SetNextWindowSize' then sizes[#sizes + 1] = mock.imguiCalls[i][2] end
+		end
+		local largest = 0
+		for i = 1, #sizes do if tonumber(sizes[i]) and sizes[i] > largest then largest = sizes[i] end end
+		t.ok(largest >= 400, 'tamanho da janela definido (' .. tostring(largest) .. ')')
+		mock.setIo({})
+	end)
+
+	t.test('sem FontGlobalScale o texto e escalado com SetWindowFontScale', function()
+		local A = liveApp({ withUi = true })
+		mock.setIo({ ignoreScale = true })
+		A.settings.geral.escala_ui = 1.4
+		A.ui.appliedScale = nil
+		A.ui._scaleMode = nil
+		t.eq(A.ui:scaleMode(), 'janela', 'caiu para SetWindowFontScale')
+		A:toggleMenu()
+		mock.clearUiLog()
+		mock.runUiFrame()
+		t.ok(mock.countCalls('SetWindowFontScale') > 0, 'chamou SetWindowFontScale')
+		mock.setIo({})
+	end)
+
+	t.test('binding sem GetIO nem SetWindowFontScale nao quebra o painel', function()
+		local A = liveApp({ withUi = true })
+		mock.setIo({ noIo = true })
+		local saved = A.ui.binding.SetWindowFontScale
+		A.ui.binding.SetWindowFontScale = nil
+		A.ui.ctorCache = nil
+		A.ui.appliedScale = nil
+		A.ui._scaleMode = nil
+		t.eq(A.ui:scaleMode(), 'sem_fonte')
+		A:toggleMenu()
+		mock.clearUiLog()
+		t.ok(mock.runUiFrame(), 'desenhou sem fonte escalavel')
+		t.eq(A.ui.frameErrors, 0, 'sem erro de Lua')
+		A.ui.binding.SetWindowFontScale = saved
+		mock.setIo({})
+	end)
+
+	t.test('aba Editor lista as areas carregadas quando nenhuma esta selecionada', function()
+		local A = liveApp({ withUi = true })
+		A:loadAroundPlayer()
+		A.project:clearSelection()
+		A.ui.tab = 'editor'
+		A:toggleMenu()
+		mock.clearUiLog()
+		mock.runUiFrame()
+		local labels = mock.selectables()
+		t.ok(#labels > 0, 'listou as areas: ' .. table.concat(labels, ' | '))
+		mock.click(labels[1])
+		mock.runUiFrame()
+		t.eq(A.project.selection.area, 15, 'clicar na lista seleciona a area')
 	end)
 
 	t.test('todas as abas desenham sem erro', function()
@@ -925,5 +1008,136 @@ t.describe('app - interface', function()
 		t.ok(ok, 'o painel desenhou mesmo sem os refs nativos')
 		t.eq(#mock.unbalanced(), 0, 'ImGui balanceado (' .. table.concat(mock.unbalanced(), ', ') .. ')')
 		binding.ImBool, binding.ImInt, binding.ImFloat = saved.ImBool, saved.ImInt, saved.ImFloat
+	end)
+
+	t.test('ImBool/ImInt sao userdata chamavel (o painel precisa ligar os widgets)', function()
+		local A = liveApp({ withUi = true })
+		-- o Moon ImGui nao expoe ImBool como funcao: e um userdata com __call.
+		-- Se o mod insistir em type() == 'function', nenhum widget liga.
+		t.eq(type(A.ui.binding.ImBool), 'table', 'o mock imita o userdata chamavel')
+		t.ok(A.ui:ctorReady('ImBool'), 'o mod reconhece o construtor')
+		t.ok(A.ui:ctorReady('ImInt'))
+		t.ok(A.ui:ctorReady('ImFloat'))
+		t.ok(A.ui:ctorReady('ImBuffer'))
+		t.ok(A.ui:ctorReady('ImVec2'))
+		local ref = A.ui:makeRef('float', 3)
+		t.ok(ref and ref.native, 'ref com objeto nativo (senao o slider nao mexe em nada)')
+		t.eq(ref:get(), 3)
+		ref:set(7)
+		t.eq(ref:get(), 7)
+		-- e o painel realmente chama os widgets ligados a refs
+		A.ui.tab = 'config'
+		A:toggleMenu()
+		mock.clearUiLog()
+		mock.runUiFrame()
+		t.ok(mock.countCalls('SliderFloat') > 0, 'desenhou slider ligado a um ref')
+		t.ok(mock.countCalls('Checkbox') > 0, 'desenhou checkbox ligado a um ref')
+	end)
+
+	t.test('binding no estilo mimgui (new.*, sem Im*) tambem liga os widgets', function()
+		local A = liveApp({ withUi = true })
+		local saved = mock.useMimguiStyle()
+		A.ui.ctorCache = nil
+		A.ui.refs = {}
+		A.ui.posRefs = nil
+		A.ui.openRef = nil
+		t.ok(A.ui:ctorReady('new.bool'), 'reconheceu os cdata do mimgui')
+		local ref = A.ui:makeRef('int', 5)
+		t.ok(ref and ref.native, 'ref cdata')
+		ref:set(9)
+		t.eq(ref:get(), 9, 'le e escreve no cdata ([0])')
+		A.ui.tab = 'config'
+		A:toggleMenu()
+		mock.clearUiLog()
+		t.ok(mock.runUiFrame(), 'desenhou no estilo mimgui')
+		t.eq(A.ui.frameErrors, 0, 'sem erro de Lua')
+		t.ok(mock.countCalls('SliderInt') + mock.countCalls('SliderFloat') > 0, 'desenhou sliders')
+		mock.restoreImGuiStyle(saved)
+	end)
+
+	t.test('nenhum texto do painel sai com formato cru (%s/%d)', function()
+		local A = liveApp({ withUi = true })
+		A:selectNode(15, 1)
+		A:validate({ inGame = false, silent = true })
+		A:toggleMenu()
+		local tabs = {}
+		for i = 1, #require('vpe.ui').TABS do tabs[i] = require('vpe.ui').TABS[i].id end
+		local bad = {}
+		for i = 1, #tabs do
+			A.ui.tab = tabs[i]
+			mock.clearUiLog()
+			mock.runUiFrame()
+			local texts = mock.texts()
+			for j = 1, #texts do
+				-- o Moon ImGui usa so o primeiro argumento do Text: se o mod passar
+				-- ('%s', valor) o painel mostra "%s" na tela (bug do print do usuario)
+				local text = tostring(texts[j])
+				if text:find('%%[sdfxq]') then
+					bad[#bad + 1] = tabs[i] .. ': ' .. text
+				elseif text == 'nil' or text:sub(1, 4) == 'nil ' then
+					-- sinal de campo lido errado (nil passado para o texto)
+					bad[#bad + 1] = tabs[i] .. ': nil na tela'
+				end
+			end
+		end
+		t.eq(#bad, 0, 'texto com formato cru: ' .. table.concat(bad, ' | '))
+	end)
+
+	t.test('o painel mostra os numeros da area carregada (e nao "sem area")', function()
+		local A = liveApp({ withUi = true })
+		A:loadAroundPlayer()
+		t.eq(A.project.selection.area, 15, 'a area do jogador virou a area atual do painel')
+		A:toggleMenu()
+		mock.clearUiLog()
+		mock.runUiFrame()
+		local found = false
+		local texts = mock.texts()
+		for i = 1, #texts do
+			if tostring(texts[i]):find('15', 1, true) then found = true end
+		end
+		t.ok(found, 'o painel escreveu a area/numeros: ' .. table.concat(texts, ' | '))
+	end)
+
+	t.test('carregar nodes avisa no chat e seleciona a area', function()
+		local A = liveApp({ withUi = true })
+		A.project:clearSelection()
+		mock.reset()
+		mock.keyState = {}
+		A:loadAroundPlayer()
+		local found = mock.chatHas('area 15')
+		t.ok(found, 'avisou no chat: ' .. tostring(mock.lastChat()))
+		t.eq(A.project.selection.area, 15)
+	end)
+
+	t.test('o log diz se os refs nasceram nativos (widgets ligados)', function()
+		local A = liveApp({ withUi = true })
+		local inventory = table.concat(A.ui:refsInventory(), ', ')
+		t.contains(inventory, 'bool=nativo', 'refs nativos no binding normal')
+		t.contains(inventory, 'buffer=nativo')
+		-- sem ImBool o ref cai para "so-lua": o painel precisa continuar de pe
+		local saved = A.ui.binding.ImBool
+		A.ui.binding.ImBool = nil
+		A.ui.ctorCache = nil
+		local degraded = table.concat(A.ui:refsInventory(), ', ')
+		t.contains(degraded, 'bool=so-lua', 'sem ImBool o diagnostico acusa')
+		A.ui.binding.ImBool = saved
+	end)
+
+	t.test('escala da interface: A+/A- mudam e ficam salvas', function()
+		local A = liveApp({ withUi = true })
+		local before = A.settings.geral.escala_ui
+		t.ok(type(before) == 'number', 'escala padrao definida')
+		A:toggleMenu()
+		mock.clearUiLog()
+		mock.runUiFrame()
+		t.ok(mock.countCalls('SmallButton') >= 2, 'os botoes A-/A+ aparecem no topo')
+		mock.click('A+')
+		mock.runUiFrame()
+		t.ok(A.settings.geral.escala_ui > before, 'A+ aumentou a escala')
+		local up = A.settings.geral.escala_ui
+		mock.click('A-')
+		mock.runUiFrame()
+		t.ok(A.settings.geral.escala_ui < up, 'A- diminuiu a escala')
+		t.ok(A.settings.geral.escala_ui <= 2.5 and A.settings.geral.escala_ui >= 0.6, 'dentro dos limites')
 	end)
 end)

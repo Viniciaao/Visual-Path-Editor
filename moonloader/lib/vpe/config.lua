@@ -15,6 +15,8 @@ M.path = nil
 M.defaults = {
 	geral = {
 		idioma = 'pt',
+		-- tamanho do painel (botoes A-/A+ dentro do painel); 1.0 = padrao do ImGui
+		escala_ui = 1.35,
 		debug = false,
 		-- grava no log, a cada quadro, a fase do desenho (ajuda a achar travamentos)
 		log_api = false,

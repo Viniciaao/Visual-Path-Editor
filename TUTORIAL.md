@@ -1,10 +1,19 @@
-# Tutorial completo — Visual Path Editor 1.0.6
+# Tutorial completo — Visual Path Editor 1.0.7
 
 Guia de uso do editor visual de *path nodes* do GTA San Andreas, escrito para quem
 nunca mexeu nos arquivos `nodes*.dat`. Explica o que é cada coisa, o que o editor
 faz sozinho, o que você precisa decidir, como salvar e como conferir se ficou certo.
 
 > **Pressa?** Faça as seções **1**, **3** e **5**. O resto é referência.
+
+> **Novidades da 1.0.7** (relato de quem testou no jogo): o painel voltou a escrever
+> os textos de verdade — antes algumas linhas apareciam como `%s`, porque o
+> `imgui.Text` do Moon ImGui usa **só o primeiro argumento** e o mod passava o texto
+> como segundo; e agora tem **escala de interface** (botões **A-**/**A+** no topo do
+> painel) porque o tamanho padrão do ImGui é pequeno demais. O **Carregar nodes**
+> ficou explícito: ele carrega a área onde você está, **seleciona ela no painel** e
+> avisa no chat (`VPE: area N carregada`) — antes, com as áreas já carregadas pelo
+> auto-carregar, o clique não mudava nada na tela e parecia que o botão estava morto.
 
 ## Índice
 
@@ -96,9 +105,15 @@ nao confere").
 
 1. Entre no jogo. O mod escreve `VPE: iniciado` no chat e o ícone aparece se houver
    Moon ImGui.
-2. Aperte **F7** — o painel abre (título: *Editor de Paths - Menu Principal*).
-3. Aba **Area** → botão **Carregar nodes** (carrega a área onde você está e, se
-   ligado, as vizinhas — o log diz `area N carregada`).
+2. Aperte **F7** — o painel abre (título: *Editor Visual de Paths*, com a versão e,
+   depois, a área atual). O **F7** também avisa no chat (`painel aberto`/`painel
+   fechado`), então dá para saber que o mod respondeu mesmo se a janela demorar a
+   aparecer.
+3. **Carregar nodes** (aba *Area* ou o botão no topo da aba *Editor*): carrega a área
+   onde você está (e, se ligado, as vizinhas), **seleciona ela no painel** e escreve
+   no chat `VPE: area N carregada (M nodes) - ela esta selecionada no painel`. Se as
+   áreas já estavam carregadas (auto-carregar), o aviso é `ja estava carregada` — e a
+   aba *Editor* lista todas as áreas carregadas para você escolher.
 4. Aperte **F8** — liga o desenho dos nodes no mundo.
 5. **Feche o painel (F7)** e gire a câmera: os marcadores ficam ancorados no mapa
    (tamanho acompanha a distância, e prédios escondem o que está atrás).
@@ -144,6 +159,23 @@ operação (Ctrl+Z volta tudo de uma vez).
 | sem modificador | passo **normal** = 1,0 |
 
 Os três passos são configuráveis (*Configuracoes → Edicao*).
+
+### Tamanho do painel (escala) — para ler sem apertar os olhos
+
+O ImGui desenha com fonte de ~13 px e isso é pequeno demais para muita gente. O mod
+nasce com **escala 1.35** e há três jeitos de mudar:
+
+| Onde | Como |
+|---|---|
+| Topo do painel | botões **A-** e **A+** (diminuem/aumentam 0,1 por clique) |
+| Aba *Configuracoes → Geral* | slider **Escala da interface** (0,60 a 2,50) |
+| INI | `[geral]` `escala_ui = 1.35` |
+
+O mod guarda a escolha no INI na hora. A escala aumenta **a fonte e a janela**
+(janela 440×640 × escala) e vale na hora, sem recarregar o jogo. Se a sua build de
+ImGui não aceitar `FontGlobalScale` no `ImGuiIO`, o mod cai para o
+`SetWindowFontScale` da própria janela — e se nenhum dos dois existir ele avisa no
+chat (*"este ImGui nao deixa escalar a fonte"*) e só o tamanho da janela muda.
 
 ### Teclas globais (funcionam sempre; todas trocáveis)
 
@@ -617,7 +649,7 @@ para o ModLoader parar de usar o arquivo antigo em cache.
 | **Area** | carregar/criar/descartar áreas, lista de arquivos e caminhos, Salvar/Exportar/Reverter/Restaurar por área, as 64 áreas do mundo |
 | **Salvar** | diferenças por arquivo, validação, Salvar alteracoes, Salvar mesmo assim, Limpar cache do ModLoader |
 | **Camera** | HUD minimapa (Tamanho, Distancia, Mundo atual: *Jogo padrao* / *Mapa MTA*, lado), o que desenhar, Altura/Tamanho do node, importar posição do mundo, carregar áreas vizinhas |
-| **Configuracoes** | idioma, presets de desenho, alcances, cores, oclusão, passos, pastas, teclas |
+| **Configuracoes** | idioma, **escala da interface**, presets de desenho, alcances, cores, oclusão, passos, pastas, teclas |
 | **Historico** | log (aba *Erros*) e alterações pendentes (aba *Alteracoes*), Desfazer/Refazer |
 | **Ajuda** | versão, caminhos, lista de teclas |
 
@@ -648,6 +680,7 @@ para o ModLoader parar de usar o arquivo antigo em cache.
 |---|---|---|
 | `[geral] idioma` | `pt` | `pt` ou `en` |
 | `[geral] carregar_vizinhas` | `true` | carregar as áreas ao redor do jogador |
+| `[geral] escala_ui` | `1.35` | tamanho do painel e da fonte (0,60 a 2,50) |
 | `[render] links_modo` | `selecionado` | `selecionado`, `todos` ou `nenhum` |
 | `[render] distancia` | `120` | alcance do desenho (m) |
 | `[render] distancia_navis` | `60` | alcance dos navis (eles são muitos) |
@@ -674,6 +707,10 @@ para o ModLoader parar de usar o arquivo antigo em cache.
 | Nada aparece desenhado | Só desenha com o jogo jogável (fora de pausa/carregamento). Veja *Estado do desenho* em *Configuracoes*. Se você apertei F8 sem querer, o chat avisa (*desenho DESLIGADO*) e o F8 liga de volta |
 | **Apertei F7 e os nodes sumiram e o painel não abriu** | Foi bug da 1.0.5 e anteriores: um erro dentro do desenho do painel derrubava o script (e o desenho junto). Na 1.0.6 o desenho não depende do painel e o mod avisa no chat o motivo; o log (`moonloader/VisualPathEditor.log`) mostra a linha `painel: erro no quadro ...` com o texto exato do erro. Para recuperar na hora (versões antigas): aperte F7 de novo (desliga o estado do painel), F8 duas vezes ou reentre no jogo |
 | F7 não faz nada | Aperte F7: o mod avisa no chat. `Moon ImGui nao encontrado` = falta o ImGui 1.1.5 (`moonloader/lib/imgui.lua`); `o painel nao apareceu` = o binding não desenhou nenhum quadro em 2 s (log: `interface: ...`); `painel desativado por erro` = veja as últimas linhas do log |
+| O painel é pequeno demais para ler | Use **A+** no topo do painel (ou *Configuracoes → Geral → Escala da interface*). A 1.0.7 nasce com escala 1.35 e aumenta fonte + janela; o INI guarda a escolha |
+| A escala mudou a janela mas a fonte continua pequena | A sua build de ImGui não aceita `FontGlobalScale`: o mod avisa no chat (*"este ImGui nao deixa escalar a fonte"*) e passa a escalar só a janela. Atualize o Moon ImGui para 1.1.5 |
+| Os textos do painel saem como `%s` / `%d` | Bug até a 1.0.6: o `imgui.Text` do Moon ImGui usa **só o primeiro argumento** e o mod passava o texto como segundo. Instale a **1.0.7** — ela formata no Lua e manda um argumento só (com teste automatizado que varre as 9 abas atrás de `%s`/`%d` cru) |
+| Cliquei em **Carregar nodes** e nada aconteceu | Até a 1.0.6 o botão carregava as áreas mas **não selecionava nenhuma**: com o auto-carregar ligado a tela ficava igual e parecia morto. Na 1.0.7 ele seleciona a área do jogador e avisa no chat (`VPE: area N carregada`); se as áreas já estavam carregadas, a aba *Editor* mostra a lista delas para escolher. Se nem assim mudar, veja o chat e o log: o motivo aparece lá |
 | Não consigo selecionar com o mouse | Feche o painel (**F7**) — o mouse só trabalha no mundo com o menu fechado. |
 | Alterações não aparecem no jogo | O GTA lê os paths no carregamento: saia e volte (ou **Limpar cache do ModLoader**). |
 | Salvamento bloqueado | Há **erros**: veja *Historico → Erros* e use **Corrigir tudo**. |
@@ -692,8 +729,11 @@ para o ModLoader parar de usar o arquivo antigo em cache.
 Visual editor for GTA San Andreas **path nodes** (`nodes*.dat`), 64 areas of
 750 × 750 units.
 
-**Quick start:** press **F7** → *Area* tab → **Carregar nodes** (load) → **F8** to
-draw. Close the panel (**F7**) and use **right click** to select, **left drag** to
+**Quick start:** press **F7** → *Area* tab → **Carregar nodes** (loads the area you
+are standing in, selects it in the panel and prints `VPE: area N carregada` in the
+chat) → **F8** to draw. If the panel is hard to read, use **A- / A+** at the top of
+the panel (or *Configuracoes → Geral → Interface scale*, default **1.35**) — it
+scales the font and the window and is saved in the INI. Close the panel (**F7**) and use **right click** to select, **left drag** to
 move on X/Y (numpad 4/6/2/8/3/9 nudges, **K** snaps to ground, Ctrl = fine step).
 Pick the node type in the *Criar/Remover* tab and press **INSERT** while aiming at
 the ground; with auto-link on, the new node connects to the nearest node of the

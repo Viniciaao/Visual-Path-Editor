@@ -101,6 +101,33 @@ Quando você salva, o mod escreve **três cópias**:
 * a altura (Z) é editada pelos botões do painel, pelo teclado numérico ou pelas teclas
   **K/P/L**; `passo_fino` (Ctrl) = 0.125, normal = 1.0, `passo_grosso` (Shift) = 8.0.
 
+### Tamanho do painel (escala da interface)
+
+O ImGui desenha com fonte de ~13 px, que é pequena para muita gente. A **1.0.7**
+nasce com **escala 1.35** e dá três controles:
+
+| Onde | Como |
+|---|---|
+| Topo do painel | botões **A-** / **A+** (0,1 por clique) |
+| *Configurações → Geral* | slider **Escala da interface** (0,60 a 2,50) |
+| INI | `[geral] escala_ui = 1.35` |
+
+A escala vale na hora (fonte + tamanho da janela), fica salva no INI e, se a build
+de ImGui não aceitar `FontGlobalScale`, o mod cai para `SetWindowFontScale` e avisa
+no chat caso nem isso exista.
+
+### Carregar nodes (o que ele faz, exatamente)
+
+1. carrega a área onde o jogador está (e as vizinhas, se `carregar_vizinhas`
+   estiver ligado);
+2. **seleciona essa área no painel** — o título passa a mostrar `(vX.Y.Z, area N)` e
+   a aba *Editor* mostra as contagens dela;
+3. escreve no chat `VPE: area N carregada (M nodes) - ela esta selecionada no painel`
+   (ou `ja estava carregada`, quando o auto-carregar já tinha feito o serviço).
+
+Se nenhuma área está selecionada, a aba *Editor* lista todas as **áreas carregadas**
+com as contagens, para você escolher com um clique.
+
 ### Abas do painel
 
 | Aba | O que faz |
@@ -111,7 +138,7 @@ Quando você salva, o mod escreve **três cópias**:
 | **Área** | lista as áreas carregadas e as 64 do mundo (nodes/links/navis), carrega/descarrega, mostra a origem de cada arquivo e onde ele será gravado, cria **área vazia**, e por área: **Salvar alterações**, **Exportar**, **Reverter (tirar do ModLoader)** e **Restaurar backup** |
 | **Salvar** | diferenças por arquivo, resumo da validação, **Validar de novo**, **Corrigir tudo**, **Salvar alterações**, **Salvar mesmo assim** e **Limpar cache do ModLoader** |
 | **Câmera** | teleporte e ajustes de visualização (distância, cores, mapa) |
-| **Configurações** | idioma, teclas, render, passos, espelhamento, restaurar padrões |
+| **Configurações** | idioma, **escala da interface**, teclas, render, passos, espelhamento, restaurar padrões |
 | **Histórico** | log do mod (também vai para `moonloader/VisualPathEditor.log`) |
 | **Ajuda** | referência rápida das teclas e do formato |
 
@@ -270,7 +297,10 @@ ambiente, round-trip das áreas carregadas e validação, e escreve o resultado 
 
 | Sintoma | O que fazer |
 |---|---|
-| Menu não abre | Moon ImGui 1.1.5 instalado? Veja o log em `moonloader/VisualPathEditor.log` |
+| Menu não abre | Moon ImGui 1.1.5 instalado? Veja o log em `moonloader/VisualPathEditor.log`. O F7 avisa no chat: `Moon ImGui nao encontrado`, `o painel nao apareceu` (watchdog de 2 s) ou `painel desativado por erro` |
+| Textos do painel aparecem como `%s` / `%d` | Bug até a 1.0.6 (o `Text` do Moon ImGui usa só o primeiro argumento). Use a **1.0.7** |
+| O painel é pequeno demais | Botões **A-**/**A+** no topo do painel ou *Configurações → Geral → Escala da interface* |
+| Cliquei em **Carregar nodes** e nada mudou | O painel estava sem nenhuma área selecionada. Na 1.0.7 o botão seleciona a área do jogador e avisa no chat; sem área selecionada a aba *Editor* lista as áreas carregadas |
 | "não carregou a área N" | Não existe `nodesN.dat` no modloader **nem** no `gta3.img`; importe pela aba *Área* |
 | Alterações não aparecem no jogo | Saia do jogo e volte (ou desligue o ModLoader e ligue), o jogo só lê os paths no carregamento |
 | Salvamento bloqueado | Veja os erros na aba *Salvar*: corrija os marcados ou use "corrigir automaticamente" |
@@ -310,6 +340,28 @@ Corrigido em **1.0.2** (campo renomeado para `fontRef`), com três proteções n
 
 ## 10. Histórico de versões
 
+* **1.0.7** — **os textos do painel aparecem de verdade** (o `imgui.Text` do Moon
+  ImGui usa **só o primeiro argumento**: o mod mandava o texto como segundo e o
+  painel escrevia `%s`/`%d` cru — agora tudo é formatado no Lua e vai como um
+  argumento só, com teste que varre as 9 abas atrás de formato cru); **escala da
+  interface** (botões **A-/A+** no topo do painel, slider em *Configurações → Geral*
+  e `[geral] escala_ui` no INI; padrão **1.35**, aumenta a fonte e a janela);
+  **Carregar nodes agora faz o que promete** — carrega a área do jogador,
+  **seleciona ela no painel** e avisa no chat (`VPE: area N carregada`), e a aba
+  *Editor* passou a listar as áreas já carregadas quando nenhuma está selecionada
+  (antes, com o auto-carregar ligado, o clique não mudava nada na tela); linha
+  colorida deixou de ser desenhada **duas vezes** (`TextColored`/`TextWrapped` são
+  `void` no Moon ImGui — testar o retorno para decidir o fallback duplicava o texto);
+  log novo `interface: refs=bool=nativo, int=nativo, ...` (diz se os widgets
+  realmente ligaram) e `ImBool/ImInt/ImFloat/...` são detectados **chamando o
+  construtor**, nunca por `type() == 'function'`.
+* **1.0.6** — **F7 não derruba mais o mod**: o desenho do painel passou a rodar
+  dentro de `pcall` (um erro no callback derrubava o script inteiro e, com ele, o
+  desenho dos nodes no mundo). Erro no painel agora vai para o log
+  (`painel: erro no quadro N`) e para o chat, e depois de 3 erros só o painel é
+  desligado, mantendo o desenho. O teclado ganhou avisos no chat (`painel aberto`/
+  `painel fechado`, `desenho LIGADO/DESLIGADO`) e a interface um *watchdog* de 2 s
+  (`painel: aberto ha 2 s sem nenhum quadro desenhado`).
 * **1.0.5** — flags de **navi** passam a ser gravadas de verdade (`WIDTH`,
   `LEFT_LANES`, `RIGHT_LANES`, `LIGHT_DIRECTION`, `TRAFFIC_LIGHT`,
   `TRAIN_CROSSING` em `navi.flags`); a lista de arquivos é reescaneada depois de
@@ -360,6 +412,19 @@ Good to know:
 * Draw budgets (`max_linhas`, `max_nodes`, `max_navis`) plus an automatic light mode
   keep the frame time in check; set `log_api = true` to log the draw phase of every
   frame (the last line before a freeze tells you where it happened).
+* **1.0.7**: panel texts are written for real (Moon ImGui's `imgui.Text` uses **only
+  the first argument** — the mod used to pass the text as the second one, so the panel
+  showed literal `%s`/`%d`; everything is now formatted in Lua and sent as a single
+  argument, with a test that scans all 9 tabs for raw format specifiers).
+  **Interface scale** (**A-** / **A+** in the panel, slider in the settings tab,
+  `escala_ui` in the INI; default 1.35 — scales font and window). **Load nodes**
+  now loads the player's area, **selects it in the panel** and reports it in the chat,
+  and the Editor tab lists already-loaded areas when none is selected. Colored lines
+  are no longer drawn twice, and the log gained `interface: refs=bool=nativo, ...`.
+* **1.0.6**: drawing errors can no longer kill the script (the panel body runs inside
+  `pcall`); panel errors are logged (`painel: erro no quadro N`) and chat-reported, and
+  after 3 errors only the panel is disabled. Chat notices for F7/F8 and a 2 s watchdog
+  (`painel: aberto ha 2 s sem nenhum quadro desenhado`).
 * **1.0.5**: navi flag fields (width, left/right lanes, light direction, traffic
   light, train crossing) are actually written to `navi.flags`; the file list is
   rescanned after *Revert* / *Restore backup*; both of those actions ask for

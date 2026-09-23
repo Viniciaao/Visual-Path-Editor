@@ -289,6 +289,44 @@ function M.chatHas(part)
 	return false, nil
 end
 
+--[[
+	io = tabela do ImGuiIO (lembrada entre quadros, como no ImGui de verdade).
+	noIo = true faz GetIO() devolver nil; goodIo = false faz o campo
+	FontGlobalScale nao guardar o valor (imita um binding que ignora a escrita).
+]]
+function M.setIo(opts)
+	opts = opts or {}
+	M.io = opts.io or { WantCaptureMouse = false, WantCaptureKeyboard = false }
+	if opts.ignoreScale then
+		local io = M.io
+		M.io = setmetatable({}, {
+			__index = function(_, k)
+				if k == 'FontGlobalScale' then return 1.0 end
+				return io[k]
+			end,
+			__newindex = function(t, k, v)
+				if k == 'FontGlobalScale' then return end -- escrita ignorada
+				rawset(t, k, v)
+			end,
+		})
+	end
+	M.noIo = opts.noIo and true or false
+	return M.io
+end
+
+--- Rotulos dos Selectable desenhados no ultimo quadro (a lista de areas).
+function M.selectables()
+	local out = {}
+	for i = 1, #M.imguiCalls do
+		if M.imguiCalls[i][1] == 'Selectable' then
+			local label = tostring(M.imguiCalls[i][2] or '')
+			label = label:gsub('##.*$', '')
+			out[#out + 1] = label
+		end
+	end
+	return out
+end
+
 --- Todo texto visivel desenhado no ultimo quadro (Text/TextColored/BulletText).
 function M.texts()
 	local out = {}
@@ -378,6 +416,12 @@ function M.installImgui()
 			M.imguiPress[label] = nil
 			return true
 		end
+		-- tambem aceita clicar pelo rotulo visivel (sem o "##id" que o ImGui esconde)
+		local visible = tostring(label):gsub('##.*$', '')
+		if visible ~= label and M.imguiPress[visible] then
+			M.imguiPress[visible] = nil
+			return true
+		end
 		return false
 	end
 
@@ -388,23 +432,52 @@ function M.installImgui()
 	imgui.WindowFlags = { NoTitleBar = 1, NoResize = 2, NoMove = 4 }
 	imgui.Col = { Text = 0, TextDisabled = 1, WindowBg = 2, Button = 3, FrameBg = 4 }
 
-	imgui.ImBool = function(v) return { v = v and true or false } end
-	imgui.ImInt = function(v) return { v = math.floor(tonumber(v) or 0) } end
-	imgui.ImFloat = function(v) return { v = tonumber(v) or 0 } end
+	--[[
+		Fidelidade do binding: no Moon ImGui `imgui.ImBool` (e ImInt/ImFloat/
+		ImVec2/ImVec4/ImBuffer) NAO e uma funcao - e um userdata com __call.
+		O `type()` disso e 'userdata' (aqui, 'table' com __call, que e o que o
+		Lua puro consegue imitar), nunca 'function'. O mock antigo expunha
+		funcoes, entao a suite passava enquanto o painel real abria sem nenhum
+		widget ligado (o log do jogo mostrou `ImBool=-, ImInt=-, ...`).
+	]]
+	local function callableCtor(build)
+		return setmetatable({}, {
+			__call = function(_, ...) return build(...) end,
+		})
+	end
+	imgui.ImBool = callableCtor(function(v) return { v = v and true or false } end)
+	imgui.ImInt = callableCtor(function(v) return { v = math.floor(tonumber(v) or 0) } end)
+	imgui.ImFloat = callableCtor(function(v) return { v = tonumber(v) or 0 } end)
 	imgui.ImDouble = imgui.ImFloat
-	imgui.ImBuffer = function(size) return { size = tonumber(size) or 0, v = string.rep('\0', tonumber(size) or 0) } end
-	imgui.ImVec2 = function(x, y) return { x = tonumber(x) or 0, y = tonumber(y) or 0 } end
-	imgui.ImVec3 = function(x, y, z) return { x = x or 0, y = y or 0, z = z or 0 } end
-	imgui.ImVec4 = function(x, y, z, w) return { x = x or 0, y = y or 0, z = z or 0, w = w or 0 } end
+	imgui.ImBuffer = callableCtor(function(size)
+		size = tonumber(size) or 0
+		return { size = size, v = string.rep('\0', size) }
+	end)
+	imgui.ImVec2 = callableCtor(function(x, y) return { x = tonumber(x) or 0, y = tonumber(y) or 0 } end)
+	imgui.ImVec3 = callableCtor(function(x, y, z) return { x = x or 0, y = y or 0, z = z or 0 } end)
+	imgui.ImVec4 = callableCtor(function(x, y, z, w) return { x = x or 0, y = y or 0, z = z or 0, w = w or 0 } end)
 
-	imgui.GetIO = function() return { WantCaptureMouse = false, WantCaptureKeyboard = false } end
+	imgui.GetIO = function()
+		if M.noIo then return nil end
+		local io = M.io or { WantCaptureMouse = false, WantCaptureKeyboard = false }
+		M.io = io
+		return io
+	end
+	imgui.SetWindowFontScale = function(scale) record('SetWindowFontScale', scale) end
 	imgui.Begin = function(title) record('Begin', title) track('Begin') return true end
 	imgui.End = function() record('End') track('End') end
-	imgui.Text = function(fmt, ...) record('Text', fmtArgs(fmt, ...)) end
-	imgui.TextColored = function(color, fmt, ...) record('TextColored', fmtArgs(fmt, ...)) end
-	imgui.TextWrapped = function(fmt, ...) record('Text', fmtArgs(fmt, ...)) return true end
-	imgui.TextDisabled = function(fmt, ...) record('Text', fmtArgs(fmt, ...)) end
-	imgui.BulletText = function(fmt, ...) record('BulletText', fmtArgs(fmt, ...)) end
+	--[[
+		No Moon ImGui o texto usa APENAS o primeiro argumento (a formatacao e do
+		C): `imgui.Text('a=%d', n)` desenha literalmente "a=%d". O mock tem que
+		fazer o mesmo, senao a suite nao ve o painel cheio de "%s" que o usuario
+		tirou print.
+	]]
+	local function single(fmt) return tostring(fmt) end
+	imgui.Text = function(fmt, ...) record('Text', single(fmt)) end
+	imgui.TextColored = function(color, fmt, ...) record('TextColored', single(fmt)) end
+	imgui.TextWrapped = function(fmt, ...) record('Text', single(fmt)) return true end
+	imgui.TextDisabled = function(fmt, ...) record('Text', single(fmt)) end
+	imgui.BulletText = function(fmt, ...) record('BulletText', single(fmt)) end
 	imgui.Separator = function() record('Separator') end
 	imgui.SameLine = function() record('SameLine') end
 	imgui.Spacing = function() record('Spacing') end
@@ -457,7 +530,7 @@ function M.installImgui()
 	imgui.EndPopup = function() record('EndPopup') track('EndPopup') end
 	imgui.CloseCurrentPopup = function() record('CloseCurrentPopup') M.imguiModal = nil end
 	imgui.ProgressBar = function(frac) record('ProgressBar', frac) end
-	imgui.SetTooltip = function(fmt, ...) record('SetTooltip', fmtArgs(fmt, ...)) end
+	imgui.SetTooltip = function(fmt, ...) record('SetTooltip', tostring(fmt)) end
 	imgui.BeginTooltip = function() record('BeginTooltip') track('BeginTooltip') return true end
 	imgui.EndTooltip = function() record('EndTooltip') track('EndTooltip') end
 	imgui.IsItemHovered = function() return false end
@@ -470,6 +543,39 @@ function M.installImgui()
 	package.preload['imgui'] = function() return imgui end
 	package.loaded['imgui'] = nil
 	return imgui
+end
+
+--[[
+	Deixa o binding no estilo mimgui: sem ImBool/ImInt/ImFloat/ImBuffer/ImVec2
+	(nesse binding tudo isso e cdata de `imgui.new.*`). Devolve o que foi
+	guardado para o teste poder restaurar.
+]]
+function M.useMimguiStyle()
+	local imgui = M.imgui
+	if not imgui then return nil end
+	local saved = {}
+	local names = { 'ImBool', 'ImInt', 'ImFloat', 'ImDouble', 'ImBuffer', 'ImVec2', 'ImVec3', 'ImVec4' }
+	for i = 1, #names do
+		saved[names[i]] = imgui[names[i]]
+		imgui[names[i]] = nil
+	end
+	local function box(v) return { [0] = v } end
+	imgui.new = {
+		bool = function(v) return box(v and true or false) end,
+		int = function(v) return box(math.floor(tonumber(v) or 0)) end,
+		float = function(v) return box(tonumber(v) or 0) end,
+		ImVec2 = function(x, y) return { x = x or 0, y = y or 0 } end,
+		ImVec4 = function(r, g, b, a) return { x = r or 0, y = g or 0, z = b or 0, w = a or 0 } end,
+	}
+	return saved
+end
+
+--- Restaura o binding para o estilo Moon ImGui (Im* chamaveis, sem new.*).
+function M.restoreImGuiStyle(saved)
+	local imgui = M.imgui
+	if not imgui or not saved then return end
+	for name, value in pairs(saved) do imgui[name] = value end
+	imgui.new = nil
 end
 
 --- Avanca o "tempo" do mock: aplica teclas pressionadas por um tick.
