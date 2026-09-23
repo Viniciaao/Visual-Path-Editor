@@ -165,7 +165,10 @@ function M.install()
 	_G.getWaterHeightAtCoords = function() return M.waterZ end
 	_G.loadScene = function() return true end
 	_G.requestCollision = function() end
-	_G.printStringNow = function() end
+	_G.printStringNow = function(text)
+		M.chatLines = M.chatLines or {}
+		M.chatLines[#M.chatLines + 1] = tostring(text)
+	end
 	_G.printHelpString = function() end
 
 	-- teclado
@@ -268,6 +271,22 @@ function M.countCalls(name)
 		if M.imguiCalls[i][1] == name then n = n + 1 end
 	end
 	return n
+end
+
+--- Todo texto visivel desenhado no ultimo quadro (Text/TextColored/BulletText).
+--- Ultima mensagem escrita no chat do jogo (printStringNow).
+function M.lastChat()
+	local lines = M.chatLines or {}
+	return lines[#lines]
+end
+
+--- Alguma mensagem do chat contem o texto?
+function M.chatHas(part)
+	local lines = M.chatLines or {}
+	for i = 1, #lines do
+		if tostring(lines[i]):find(part, 1, true) then return true, lines[i] end
+	end
+	return false, nil
 end
 
 --- Todo texto visivel desenhado no ultimo quadro (Text/TextColored/BulletText).
@@ -479,6 +498,7 @@ end
 
 function M.reset()
 	M.renderCalls = {}
+	M.chatLines = {}
 	M.keyState = {}
 	M.keyJustPressed = {}
 	M.resetImgui()

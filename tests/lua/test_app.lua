@@ -810,12 +810,120 @@ t.describe('app - interface', function()
 		t.contains(tostring(A.status), 'limpo')
 	end)
 
-	t.test('menu fechado nao desenha e nao captura o mouse', function()
+	t.test('menu fechado nao desenha e libera o mouse para o mundo', function()
 		local A = liveApp({ withUi = true })
 		A.ui:setVisible(false)
 		mock.resetImgui()
 		t.eq(mock.runUiFrame(), false)
 		t.eq(mock.countCalls('Begin'), 0)
-		t.eq(A.ui:worldMouseEnabled(), false)
+		-- com o painel fechado o mouse e do mundo: era o contrario antes, e nao
+		-- dava para selecionar/arrastar node nenhum
+		t.eq(A.ui:worldMouseEnabled(), true)
+		t.eq(A:worldMouseEnabled(), true)
+	end)
+
+	t.test('painel aberto solta o mouse para o mundo quando o ImGui nao o captura', function()
+		local A = liveApp({ withUi = true })
+		A:toggleMenu()
+		A.ui.wantCaptureMouse = true
+		t.eq(A:worldMouseEnabled(), false, 'painel usando o mouse: mundo parado')
+		A.ui.wantCaptureMouse = false
+		t.eq(A:worldMouseEnabled(), true, 'painel fora do caminho: mundo com o mouse')
+	end)
+
+	t.test('sem ImGui o F7 avisa no chat e o desenho no mundo continua', function()
+		local A = liveApp({ withUi = false })
+		t.eq(A.ui, nil)
+		t.eq(A:panelState(), 'sem_imgui')
+		mock.reset()
+		A:selectNode(15, 1)
+		mock.pressKey(118) -- F7
+		A:updateKeys()
+		mock.releaseKeys()
+		local found, line = mock.chatHas('Moon ImGui')
+		t.ok(found, 'avisou que o painel nao pode abrir: ' .. tostring(mock.lastChat()))
+		t.contains(tostring(line), 'VisualPathEditor.log')
+		-- e o desenho continua funcionando (nao e o painel que desenha os nodes)
+		mock.renderCalls = {}
+		A:drawWorld()
+		t.ok(#mock.renderCalls > 0, 'desenhou os nodes')
+	end)
+
+	t.test('F7 e F8 avisam no chat o que acabou de acontecer', function()
+		local A = liveApp({ withUi = true })
+		mock.reset()
+		A:toggleMenu()
+		t.ok(mock.chatHas('painel aberto'), tostring(mock.lastChat()))
+		A:toggleMenu()
+		t.ok(mock.chatHas('painel fechado'), tostring(mock.lastChat()))
+		A:toggleRender()
+		t.ok(mock.chatHas('DESLIGADO'), tostring(mock.lastChat()))
+		t.eq(A.settings.render.ativo, false)
+		A:toggleRender()
+		t.ok(mock.chatHas('LIGADO'), tostring(mock.lastChat()))
+		t.eq(A.settings.render.ativo, true)
+	end)
+
+	t.test('erro ao desenhar o painel nao derruba o mod nem o desenho', function()
+		local A = liveApp({ withUi = true })
+		A:selectNode(15, 1)
+		A:toggleMenu()
+		mock.clearUiLog() -- (reset() tira o hook: aqui o hook precisa continuar)
+		-- um erro qualquer dentro de um quadro do painel (o caso real que deixava
+		-- a tela sem nodes e sem painel)
+		A.ui.draw_camera_tab = function() error('falha proposital') end
+		A.ui.tab = 'camera'
+		local ok1 = mock.runUiFrame()
+		t.eq(ok1, false, 'o erro nao escapou do callback do ImGui')
+		t.eq(A.ui.frameErrors, 1, 'contou o erro')
+		t.ok(mock.chatHas('erro ao desenhar'), tostring(mock.lastChat()))
+		mock.runUiFrame()
+		mock.runUiFrame()
+		t.eq(A.ui.disabled, true, 'painel desativado depois de 3 erros')
+		t.eq(A.ui.visible, false)
+		t.eq(A.ui:panelState(), 'desativado')
+		t.ok(mock.chatHas('painel desativado'), tostring(mock.lastChat()))
+		-- o desenho no mundo segue de pe
+		mock.renderCalls = {}
+		A:drawWorld()
+		t.ok(#mock.renderCalls > 0, 'os nodes continuam sendo desenhados')
+		-- e o F7 explica em vez de nao fazer nada
+		mock.reset()
+		A:toggleMenu()
+		t.ok(mock.chatHas('painel desativado'), tostring(mock.lastChat()))
+	end)
+
+	t.test('painel que nao desenha avisa no chat depois de 2 s', function()
+		local A = liveApp({ withUi = true })
+		A.ui.installHook = function() return false end
+		-- hook registrado, mas o ImGui nunca chama o callback (o caso "apertei F7
+		-- e nao abriu nada"): o mod espera 2 s e avisa em vez de ficar mudo
+		A:toggleMenu()
+		for i = 1, 70 do A:update(1 / 30) end
+		local found = mock.chatHas('nao apareceu')
+		t.ok(found, 'avisou: ' .. tostring(mock.lastChat()))
+		-- quando o ImGui desenha, o aviso para
+		mock.clearUiLog()
+		A.ui.drewOnce = true
+		mock.reset()
+		for i = 1, 70 do A:update(1 / 30) end
+		t.eq(mock.chatHas('nao apareceu'), false, 'nao avisa quando desenhou')
+	end)
+
+	t.test('binding sem ImBool/ImInt/ImFloat nao quebra o painel', function()
+		local A = liveApp({ withUi = true })
+		local binding = A.ui.binding
+		local saved = { ImBool = binding.ImBool, ImInt = binding.ImInt, ImFloat = binding.ImFloat }
+		binding.ImBool, binding.ImInt, binding.ImFloat = nil, nil, nil
+		A.ui.refs = {}
+		A.ui.posRefs = nil
+		A.ui.openRef = nil
+		A:toggleMenu()
+		mock.clearUiLog()
+		local ok = mock.runUiFrame()
+		t.eq(A.ui.frameErrors, 0, 'nenhum erro de Lua')
+		t.ok(ok, 'o painel desenhou mesmo sem os refs nativos')
+		t.eq(#mock.unbalanced(), 0, 'ImGui balanceado (' .. table.concat(mock.unbalanced(), ', ') .. ')')
+		binding.ImBool, binding.ImInt, binding.ImFloat = saved.ImBool, saved.ImInt, saved.ImFloat
 	end)
 end)

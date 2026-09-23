@@ -24,7 +24,7 @@
 
 script_name('Visual Path Editor')
 script_author('Viniciaao')
-script_version('1.0.5')
+script_version('1.0.6')
 script_description('Editor visual dos path nodes (nodes*.dat) com validacao antes de salvar.')
 
 --------------------------------------------------------------------------------
@@ -85,22 +85,33 @@ function main()
 		lastClock = now
 		if dt < 0 or dt > 1 then dt = 1 / 30 end
 
+		-- Uma falha na interface (teste de tecla, mouse, painel) nao pode levar
+		-- o desenho dos nodes junto: cada parte roda no seu proprio pcall.
 		local ok, err = pcall(function()
 			app:update(dt)
 			app:followPlayerTick()
+		end)
+		if not ok then
+			failures = failures + 1
+			if app.log then app.log.error('loop (update): %s', tostring(err)) end
+		end
+
+		local okDraw, errDraw = pcall(function()
 			-- o desenho no mundo precisa ser chamado a cada quadro
 			app:drawWorld()
 		end)
-
-		if not ok then
+		if not okDraw then
 			failures = failures + 1
-			if app.log then app.log.error('loop: %s', tostring(err)) end
-			if failures >= 5 then
-				if printStringNow then printStringNow('~r~Visual Path Editor: erro repetido, verifique o log', 6000) end
-				break
-			end
-		else
+			if app.log then app.log.error('loop (desenho): %s', tostring(errDraw)) end
+		end
+
+		if ok and okDraw then
 			failures = 0
+		elseif failures >= 5 then
+			if printStringNow then
+				printStringNow('~r~Visual Path Editor: erro repetido. Log: moonloader/VisualPathEditor.log', 8000)
+			end
+			break
 		end
 	end
 

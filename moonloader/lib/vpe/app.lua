@@ -28,7 +28,7 @@ local M = {}
 
 local T = i18n.t
 
-M.VERSION = '1.0.5'
+M.VERSION = '1.0.6'
 M.AREA_COUNT = 64
 
 M.VK_CONTROL = 0x11
@@ -1263,9 +1263,39 @@ end
 -- Render / interface
 --------------------------------------------------------------------------------
 
+--- Aviso curto no chat do jogo. E o unico feedback possivel quando o painel
+--- nao consegue abrir (sem ImGui ou desativado por erro).
+function M:notifyChat(text)
+	if type(printStringNow) ~= 'function' then return false end
+	local ok = pcall(printStringNow, tostring(text), 6000)
+	return ok
+end
+
+function M:panelState()
+	if not self.ui then return 'sem_imgui' end
+	return self.ui:panelState()
+end
+
 function M:toggleMenu()
+	local state = self:panelState()
+	if state == 'desativado' then
+		self:notifyChat(T('panel.desativado'))
+		return false
+	end
+
 	self.showMenu = not self.showMenu
+	self.panelWarned = false
+	self.panelWait = 0
 	if self.ui then self.ui:setVisible(self.showMenu) end
+
+	if state == 'sem_imgui' then
+		self:notifyChat(T('panel.sem_imgui'))
+	elseif self.showMenu then
+		self:notifyChat(T('panel.aberto'))
+	else
+		self:notifyChat(T('panel.fechado'))
+	end
+	return self.showMenu
 end
 
 function M:toggleRender()
@@ -1281,6 +1311,13 @@ function M:toggleRender()
 	end
 	self:setStatus((conf.ativo and T('ui.enabled') or T('ui.disabled')) .. ': ' .. T('ui.visualizar'), 'info')
 	self:warnRenderState()
+	-- avisa no chat: e a tecla do lado do F7, e sem aviso o jogador nao sabe se
+	-- o que sumiu foi o painel ou o desenho
+	if conf.ativo then
+		self:notifyChat(T('render.ligado'))
+	else
+		self:notifyChat(T('render.desligado'))
+	end
 	return conf.ativo
 end
 
@@ -1358,8 +1395,14 @@ function M:warnRenderState()
 end
 
 function M:frame()
-	if self.ui then return self.ui:frame() end
-	return false
+	if not self.ui then return false end
+	-- o painel roda dentro do callback do ImGui: nada pode escapar daqui
+	local ok, a = pcall(function() return self.ui:frame() end)
+	if not ok then
+		if self.log then log.error('painel: %s', tostring(a)) end
+		return false
+	end
+	return a
 end
 
 --------------------------------------------------------------------------------
@@ -1531,6 +1574,29 @@ function M:update(dt)
 	self:updateNudge(dt)
 	self:autoValidateTick()
 	self:diagnosticTick()
+	self:panelWatchdog(dt)
+end
+
+--[[
+	Se o painel foi mandado abrir e o ImGui nao desenhou nenhum quadro em ~2 s, o
+	jogador ve a tela normal e o F7 "nao fez nada". Em vez de silencio, o mod
+	avisa no chat e registra no log o estado do binding (hook e API).
+]]
+function M:panelWatchdog(dt)
+	if not self.ui or not self.showMenu or self.ui:panelState() ~= 'pronto' or self.ui:hasDrawn() then
+		self.panelWait = 0
+		return false
+	end
+	self.panelWait = (self.panelWait or 0) + (dt or 0)
+	if self.panelWait < 2.0 then return false end
+	self.panelWait = 0
+	if self.panelWarned then return false end
+	self.panelWarned = true
+	if self.log then
+		log.warn('painel: aberto ha 2 s sem nenhum quadro desenhado (hook=%s)', tostring(self.ui.hook))
+	end
+	self:notifyChat(T('panel.sem_quadro'))
+	return true
 end
 
 function M:drawWorld()

@@ -71,6 +71,9 @@ function M.new(app)
 		filter = '',
 		linkTarget = nil,
 		showConfirm = false,
+		disabled = false,
+		frameErrors = 0,
+		drewOnce = false,
 	}
 	setmetatable(self, { __index = M })
 	return self
@@ -87,7 +90,28 @@ function M:init()
 	end
 	self:installHook()
 	log.info('interface: %s (%s)', tostring(name), tostring(self.hook or 'sem hook'))
+	-- inventario da API: sem isto, um widget que nao existe naquela build some
+	-- calado e o usuario acha que o painel "nao abre"
+	log.info('interface: api=%s', table.concat(self:apiInventory(), ', '))
+	if not self.hook or self.hook == 'sem hook' then
+		log.warn('interface: nenhum hook de quadro disponivel (OnFrame/OnDrawFrame): o painel nao vai desenhar')
+	end
 	return true
+end
+
+--- Quais APIs de widget existem neste binding (usado no log e no diagnostico).
+function M:apiInventory()
+	local wanted = {
+		'Begin', 'End', 'Text', 'TextColored', 'Button', 'SmallButton', 'Checkbox',
+		'Combo', 'InputFloat', 'SliderInt', 'SliderFloat', 'Selectable', 'MenuItem',
+		'CollapsingHeader', 'BeginChild', 'BeginPopupModal', 'Separator', 'SameLine',
+		'ImBool', 'ImInt', 'ImFloat', 'ImVec2', 'ImVec4', 'ImBuffer',
+	}
+	local out = {}
+	for i = 1, #wanted do
+		out[#out + 1] = wanted[i] .. '=' .. (self:has(wanted[i]) and 'ok' or '-')
+	end
+	return out
 end
 
 function M.loadBinding()
@@ -111,9 +135,16 @@ function M:installHook()
 		local ok = pcall(binding.OnDrawFrame, draw)
 		if ok then self.hook = 'OnDrawFrame(fn)' return true end
 	end
-	binding.OnDrawFrame = draw
-	self.hook = 'OnDrawFrame=fn'
-	return true
+	-- Moon ImGui nao expoe OnDrawFrame como funcao: o script ATRIBUI o campo.
+	-- (alguns bindings guardam a atribuicao fora da tabela, entao o sucesso do
+	-- pcall e a unica prova confiavel de que o hook foi registrado)
+	local ok = pcall(function() binding.OnDrawFrame = draw end)
+	if ok then
+		self.hook = 'OnDrawFrame=fn'
+		return true
+	end
+	self.hook = nil
+	return false
 end
 
 function M:setVisible(value)
@@ -141,10 +172,14 @@ end
 --- O mouse esta livre para interagir com o mundo (fora das janelas)?
 --- Usa o valor guardado no ultimo quadro do ImGui: getIO/GetIO so pode ser
 --- chamado dentro do desenho da interface, nunca no loop do script.
+--- O mouse pertence ao MUNDO quando nao ha painel (sem ImGui ou desativado) e
+--- quando o painel esta fechado. Antes era o contrario: com o painel fechado o
+--- mouse ficava preso ao ImGui e nao dava para selecionar/arrastar node nenhum.
 function M:worldMouseEnabled()
-	if not self.visible or not self.binding then return false end
+	if not self.binding or self.disabled then return true end
+	if not self.visible then return true end
 	if type(self.wantCaptureMouse) == 'boolean' then return not self.wantCaptureMouse end
-	return true
+	return false
 end
 
 --------------------------------------------------------------------------------
@@ -195,9 +230,16 @@ function M:makeRef(kind, value)
 			if ok then native = buf isCdata = true end
 		end
 	end
-	local ref = { kind = kind, native = native, isCdata = isCdata, value = value, size = value }
-	if not native then return nil end
+	-- Sem o objeto nativo (build sem ImBool/ImInt/ImFloat/ImBuffer) o ref continua
+	-- utilizavel em Lua: o campo do painel nao desenha, mas nada estoura. Antes
+	-- disso o makeRef devolvia nil e um :get() em cima dele derrubava o script
+	-- inteiro dentro do callback do ImGui (o desenho no mundo morria junto).
+	local ref = {
+		kind = kind, native = native, isCdata = isCdata, value = value,
+		size = value, luaOnly = (native == nil),
+	}
 	function ref:get()
+		if not self.native then return self.value end
 		if self.isCdata then
 			if self.kind == 'buffer' then return tostring(self.value or '') end
 			return self.native[0]
@@ -207,7 +249,7 @@ function M:makeRef(kind, value)
 	end
 	function ref:set(v)
 		self.value = v
-		if not self.native then return end
+		if not self.native then return false end
 		if self.isCdata then
 			if self.kind == 'buffer' then return end
 			self.native[0] = v
@@ -227,7 +269,10 @@ function M:ref(kind, key, value)
 	local existing = self.refs[key]
 	if existing then return existing end
 	local created = self:makeRef(kind, value)
-	if created then created.key = key self.refs[key] = created end
+	if created then
+		created.key = key
+		self.refs[key] = created
+	end
 	return created
 end
 
@@ -319,29 +364,34 @@ function M:inputInt(label, ref, step, fast)
 	return self:call('InputInt', label, ref.native, step or 1, fast or 10) == true
 end
 
+--- O ref tem objeto nativo? (sem ele o widget nao desenha, mas nao quebra)
+function M:refReady(ref)
+	return ref ~= nil and ref.native ~= nil
+end
+
 function M:inputFloat(label, ref, step)
-	if not ref then return false end
+	if not self:refReady(ref) then return false end
 	return self:call('InputFloat', label, ref.native, step or 0.5, 2) == true
 end
 
 --- Campo de texto (ImBuffer). Devolve true quando o usuario mudou o conteudo.
 function M:inputText(label, ref, flags)
-	if not ref then return false end
+	if not self:refReady(ref) then return false end
 	return self:call('InputText', label, ref.native, flags) == true
 end
 
 function M:sliderInt(label, ref, min, max)
-	if not ref then return false end
+	if not self:refReady(ref) then return false end
 	return self:call('SliderInt', label, ref.native, min, max) == true
 end
 
 function M:sliderFloat(label, ref, min, max)
-	if not ref then return false end
+	if not self:refReady(ref) then return false end
 	return self:call('SliderFloat', label, ref.native, min, max) == true
 end
 
 function M:combo(label, ref, items)
-	if not ref or not items or #items == 0 then return false end
+	if not self:refReady(ref) or not items or #items == 0 then return false end
 	local index = util.round(ref:get()) + 1
 	if index < 1 then index = 1 end
 	if index > #items then index = #items end
@@ -367,7 +417,7 @@ end
 
 function M:collapsingHeader(label, ref)
 	if self:has('CollapsingHeader') then
-		if ref then return self:call('CollapsingHeader', label, ref.native) == true end
+		if self:refReady(ref) then return self:call('CollapsingHeader', label, ref.native) == true end
 		return self:call('CollapsingHeader', label) == true
 	end
 	return false
@@ -380,7 +430,7 @@ function M:beginChild(id, w, h)
 end
 
 function M:beginWindow(title, ref)
-	if ref then return self:call('Begin', title, ref.native) == true end
+	if self:refReady(ref) then return self:call('Begin', title, ref.native) == true end
 	return self:call('Begin', title) == true
 end
 
@@ -478,13 +528,61 @@ end
 -- Frame
 --------------------------------------------------------------------------------
 
+--- O ImGui ja desenhou pelo menos um quadro? (diagnostico do "F7 nao abre")
+function M:hasDrawn()
+	return self.drewOnce == true
+end
+
+--- Estado do painel, para o mod avisar o jogador em vez de ficar mudo.
+--- 'sem_imgui' | 'desativado' | 'pronto'
+function M:panelState()
+	if not self.binding then return 'sem_imgui' end
+	if self.disabled then return 'desativado' end
+	return 'pronto'
+end
+
+--[[
+	Desenha o painel. Roda DENTRO do callback do ImGui: um erro que escapasse
+	daqui derrubaria o script inteiro no meio do callback, e com ele o desenho
+	dos nodes no mundo - foi o que aconteceu com o "apertei F7 e os nodes
+	sumiram e nenhum painel abriu". Agora o quadro inteiro passa por pcall, o
+	erro vai para o log (com o texto), o jogador recebe um aviso no chat e, se o
+	erro se repetir, o painel e desligado para o resto continuar funcionando.
+]]
 function M:frame()
 	if not self.binding then return false end
 	pcall(function()
 		if self.binding.Process ~= nil then self.binding.Process = self.visible end
 	end)
-	if not self.visible then return false end
+	if self.disabled or not self.visible then return false end
 
+	local ok, err = pcall(function() return self:drawFrameBody() end)
+	if not ok then
+		self.frameErrors = (self.frameErrors or 0) + 1
+		log.error('painel: erro no quadro %d: %s', self.frameErrors, tostring(err))
+		if self.frameErrors == 1 then
+			self.app:notifyChat(T('panel.erro'))
+		end
+		if self.frameErrors >= 3 then
+			self.disabled = true
+			self.visible = false
+			pcall(function() if self.binding.Process ~= nil then self.binding.Process = false end end)
+			pcall(function() if self.binding.LockPlayer ~= nil then self.binding.LockPlayer = false end end)
+			pcall(function() if self.binding.ShowCursor ~= nil then self.binding.ShowCursor = false end end)
+			log.error('painel desativado depois de %d erros (o desenho no mundo continua)', self.frameErrors)
+			self.app:notifyChat(T('panel.desativado'))
+		end
+		return false
+	end
+	self.frameErrors = 0
+	if not self.drewOnce then
+		self.drewOnce = true
+		log.info('painel: primeiro quadro desenhado (hook=%s)', tostring(self.hook))
+	end
+	return true
+end
+
+function M:drawFrameBody()
 	-- estado do mouse/teclado do ImGui: so pode ser lido aqui dentro
 	local okFlags, wantMouse, wantKeys = pcall(function()
 		local io = self:getIO()

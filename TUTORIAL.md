@@ -1,4 +1,4 @@
-# Tutorial completo — Visual Path Editor 1.0.5
+# Tutorial completo — Visual Path Editor 1.0.6
 
 Guia de uso do editor visual de *path nodes* do GTA San Andreas, escrito para quem
 nunca mexeu nos arquivos `nodes*.dat`. Explica o que é cada coisa, o que o editor
@@ -671,7 +671,9 @@ para o ModLoader parar de usar o arquivo antigo em cache.
 | Sintoma | Causa provável / solução |
 |---|---|
 | "Nao carregou a area N" | Não existe `nodesN.dat` no ModLoader nem no `gta3.img`. Use **Criar area vazia aqui** e salve. |
-| Nada aparece desenhado | Só desenha com o jogo jogável (fora de pausa/carregamento). Veja *Estado do desenho* em *Configuracoes*. |
+| Nada aparece desenhado | Só desenha com o jogo jogável (fora de pausa/carregamento). Veja *Estado do desenho* em *Configuracoes*. Se você apertei F8 sem querer, o chat avisa (*desenho DESLIGADO*) e o F8 liga de volta |
+| **Apertei F7 e os nodes sumiram e o painel não abriu** | Foi bug da 1.0.5 e anteriores: um erro dentro do desenho do painel derrubava o script (e o desenho junto). Na 1.0.6 o desenho não depende do painel e o mod avisa no chat o motivo; o log (`moonloader/VisualPathEditor.log`) mostra a linha `painel: erro no quadro ...` com o texto exato do erro. Para recuperar na hora (versões antigas): aperte F7 de novo (desliga o estado do painel), F8 duas vezes ou reentre no jogo |
+| F7 não faz nada | Aperte F7: o mod avisa no chat. `Moon ImGui nao encontrado` = falta o ImGui 1.1.5 (`moonloader/lib/imgui.lua`); `o painel nao apareceu` = o binding não desenhou nenhum quadro em 2 s (log: `interface: ...`); `painel desativado por erro` = veja as últimas linhas do log |
 | Não consigo selecionar com o mouse | Feche o painel (**F7**) — o mouse só trabalha no mundo com o menu fechado. |
 | Alterações não aparecem no jogo | O GTA lê os paths no carregamento: saia e volte (ou **Limpar cache do ModLoader**). |
 | Salvamento bloqueado | Há **erros**: veja *Historico → Erros* e use **Corrigir tudo**. |
