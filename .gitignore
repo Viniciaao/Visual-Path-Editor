@@ -1,0 +1,12 @@
+# artefatos de teste / saidas locais
+tests/tmp/
+*.log
+*.bak
+tmp/
+export/
+__pycache__/
+*.pyc
+*.zip
+# pastas de teste criadas a partir de caminhos com \ (Windows) rodando no POSIX
+home*
+*tmp\*
